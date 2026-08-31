@@ -59,6 +59,10 @@ const feedbackTextFromSession=session=>[session?.feedback?.detail,session?.feedb
  .filter(value=>value!==undefined&&value!==null&&String(value).length>0)
  .map(String)
  .join('\n');
+const mergeClassroomDetailIntoSchool=(school,detail)=>({...school,
+ classrooms:school.classrooms.map(classroom=>classroom.id===detail.classroom.id?detail.classroom:classroom),
+ sessions:[...school.sessions.filter(session=>session.classId!==detail.classroom.id),...detail.sessions]
+});
 
 function App({user,profile,onSignOut}){
   const location = useLocation();
@@ -219,7 +223,6 @@ function App({user,profile,onSignOut}){
    }
   }catch(e){console.error('Initial data load failed',e);cloudReady.current=true;setCloudStatus(e.code==='42P01'?'setup':'error')}})();return()=>{active=false}},[user.id]);
   useEffect(()=>{
-    loadSchoolIndex().then(data=>{setSchools(data);setContextLoading(false)}).catch(err=>{console.error(err);setContextLoading(false)});
     loadOffices().then(setOffices).catch(console.error);
 
     // One-time fix for corrupted evaluations with null school_id
@@ -318,7 +321,27 @@ function App({user,profile,onSignOut}){
   };
   const selectSchool=id=>{if(id&&id===schoolId)return true; return guardNavigation(()=>selectSchoolNow(id));};
   const selectSchoolAfter=s=>{schoolLoadRequest.current++;setContextLoading(false);setSchoolId(s.id);setClassId(s.classrooms[0]?.id);setSessionId(s.sessions[0]?.id);navigate('/classroom')};
-  const selectClassNow=id=>{setClassId(id);setSessionId(school.sessions.find(s=>s.classId===id)?.id)};
+  const selectClassNow=id=>{
+   const scoreSchoolIsPartial=path.startsWith('/scores')&&scoreSchool?.id===schoolId&&!scoreSchool.loaded;
+   const hasClassSessions=scoreSchool?.sessions.some(session=>session.classId===id);
+   if(scoreSchoolIsPartial&&!hasClassSessions){
+    const request=++schoolLoadRequest.current;
+    setClassId(id);setSessionId('');setContextLoading(true);
+    loadClassroomDetail(id).then(detail=>{
+     if(schoolLoadRequest.current!==request)return;
+     setSchools(all=>all.map(item=>item.id===schoolId?mergeClassroomDetailIntoSchool(item,detail):item));
+     setSessionId(detail.sessions[0]?.id||'');
+    }).catch(error=>{
+     console.error(error);
+     flash(`โหลดข้อมูลห้องเรียนไม่สำเร็จ: ${error.message}`);
+    }).finally(()=>{
+     if(schoolLoadRequest.current===request)setContextLoading(false);
+    });
+    return;
+   }
+   const availableSessions=path.startsWith('/scores')?scoreSchool?.sessions:school?.sessions;
+   setClassId(id);setSessionId(availableSessions?.find(session=>session.classId===id)?.id||'');
+  };
   const selectClass=id=>{if(id&&id===classId)return true; return guardNavigation(()=>selectClassNow(id));};
   useEffect(()=>{
     if(!path.startsWith('/scores')){
@@ -338,16 +361,30 @@ function App({user,profile,onSignOut}){
     scoreTargetRequest.current=requestKey;
     const requestedClassId=params.get('classId')||'';
     const requestedSessionId=params.get('sessionId')||'';
-    const applyTarget=detail=>{
-      const nextClass=detail.classrooms.some(item=>String(item.id)===String(requestedClassId))?requestedClassId:(detail.classrooms[0]?.id||'');
-      const sessionsForClass=detail.sessions.filter(item=>String(item.classId)===String(nextClass));
+    const nextClassId=target.classrooms.some(item=>String(item.id)===String(requestedClassId))?requestedClassId:(target.classrooms[0]?.id||'');
+    const applyTarget=(schoolData,sessionsSource=schoolData.sessions)=>{
+      const nextClass=schoolData.classrooms.some(item=>String(item.id)===String(requestedClassId))?requestedClassId:(schoolData.classrooms[0]?.id||'');
+      const sessionsForClass=sessionsSource.filter(item=>String(item.classId)===String(nextClass));
       const nextSession=sessionsForClass.some(item=>String(item.id)===String(requestedSessionId))?requestedSessionId:(sessionsForClass[0]?.id||'');
-      setSchoolId(detail.id);
+      setSchoolId(schoolData.id);
       setClassId(nextClass);
       setSessionId(nextSession);
     };
     if(target.loaded){
       applyTarget(target);
+      setContextLoading(false);
+      return;
+    }
+    if(!nextClassId){
+      applyTarget(target);
+      setContextLoading(false);
+      return;
+    }
+    const targetClass=target.classrooms.find(item=>String(item.id)===String(nextClassId));
+    const targetClassAlreadyLoaded=target.sessions.some(item=>String(item.classId)===String(nextClassId))||targetClass?.students?.length>0;
+    if(targetClassAlreadyLoaded){
+      applyTarget(target);
+      setContextLoading(false);
       return;
     }
     const request=++schoolLoadRequest.current;
@@ -355,9 +392,10 @@ function App({user,profile,onSignOut}){
     setClassId('');
     setSessionId('');
     setContextLoading(true);
-    loadSchoolDetail(target.id).then(detail=>{
-      setSchools(current=>current.map(item=>item.id===detail.id?{...detail,summary:item.summary}:item));
-      if(schoolLoadRequest.current===request)applyTarget(detail);
+    loadClassroomDetail(nextClassId).then(detail=>{
+      if(schoolLoadRequest.current!==request)return;
+      setSchools(current=>current.map(item=>item.id===target.id?mergeClassroomDetailIntoSchool(item,detail):item));
+      applyTarget({...target,classrooms:target.classrooms.map(item=>item.id===detail.classroom.id?detail.classroom:item),sessions:detail.sessions},detail.sessions);
     }).catch(error=>{
       console.error(error);
       flash(`โหลดข้อมูลโรงเรียนไม่สำเร็จ: ${error.message}`);
