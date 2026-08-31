@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="คำนวณคะแนน">
+  <meta name="theme-color" content="#007aff">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+  <title>ระบบคำนวณคะแนน - Core D. San</title>
+</head>
+<body>
+
+<div class="card">
+  <div class="header-section">
+    <img src="https://via.placeholder.com/140" onerror="this.style.display='none'">
+    <h3>ภารกิจหุ่นยนต์</h3>
+    <div class="sub-title">ระบบคำนวณเวลาและคะแนน</div>
+  </div>
+  
+  <div id="input-list"></div>
+  
+  <div class="action-group">
+    <button class="btn-calc" onclick="calculateAll()">คำนวณผลลัพธ์</button>
+    <button class="btn-reset" onclick="resetApp()">ล้างข้อมูลทั้งหมด</button>
+  </div>
+
+  <div id="resultArea" class="result-area">
+    <div style="font-size: 14px; font-weight: 800; color: var(--primary); text-transform: uppercase;">คะแนนรวมสุทธิ</div>
+    <div id="totalScore" class="total-score-val">0</div>
+    <div style="font-size: 18px; font-weight: 700;">คะแนน</div>
+    <div id="totalTime" class="total-time-val"></div>
+  </div>
+
+  <div class="footer-note">
+    พิมพ์ <b>2.30</b> = 7 คะแนน | ปุ่ม <b>+5 คะแนน</b> = 5 คะแนน | ปุ่ม <b>DNF</b> = 0 คะแนน<br>
+    พัฒนาโดย <b>Core D. San</b> - Robotics Trainer
+  </div>
+</div>
+
+<script src="script.js"></script>
+
+</body>
+</html>

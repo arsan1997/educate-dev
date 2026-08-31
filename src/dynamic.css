@@ -1,0 +1,91 @@
+.dynamic-context .select-wrap{background:var(--soft);border:1px solid var(--line);border-radius:10px;transition:all .2s cubic-bezier(0.4,0,0.2,1);padding:0 4px;display:flex;align-items:center}.dynamic-context .select-wrap:hover{background:var(--panel);border-color:var(--accent);box-shadow:0 4px 12px #00000008;transform:translateY(-1px)}.dynamic-context .select-wrap:active{transform:scale(0.96) translateY(0)}.dynamic-context .select-wrap:focus-within{border-color:var(--accent);background:var(--panel);box-shadow:0 0 0 3px var(--accent-soft)}.dynamic-context select,.dynamic-context .select-trigger{border:0;background:transparent;font:inherit;font-weight:600;max-width:240px;height:32px;outline:none;padding:0 28px 0 10px;cursor:pointer;font-size:12px;color:var(--text);display:flex;align-items:center}.dynamic-context .select-wrap:last-child select,.dynamic-context .select-wrap:last-child .select-trigger{font-weight:500;color:var(--muted);max-width:110px}.dynamic-context .select-wrap svg{right:10px;top:9px;width:14px;opacity:0.6;transition:transform .3s ease;pointer-events:none}.dynamic-context .select-wrap:focus-within svg{transform:rotate(180deg);color:var(--accent);opacity:1}.school-count{margin-left:auto;margin-right:12px;padding:5px 10px;border-radius:99px;background:var(--accent-soft);color:var(--accent);font-size:10px;font-weight:700}.session-picker{display:grid;grid-template-columns:1fr 38px;gap:6px}.session-picker button{border:1px solid var(--line);background:var(--soft);border-radius:7px;display:grid;place-items:center}.session-picker button svg{width:15px}.page-buttons{display:flex;gap:8px}.school-strip{display:flex;gap:10px;overflow:auto;padding-bottom:12px;margin-bottom:8px}.school-chip{min-width:230px;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:11px;padding:13px;display:flex;gap:10px;text-align:left;transition:.2s cubic-bezier(0.4,0,0.2,1);cursor:pointer}
+.school-chip:hover{border-color:var(--muted);background:var(--soft)}
+.school-chip:active{transform:scale(0.98)}
+.school-chip>svg{width:18px;color:var(--muted);transition:.2s}
+.school-chip span{display:flex;flex-direction:column}
+.school-chip b{font-size:13px;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+.school-chip small{font-size:11px;color:var(--muted);margin-top:3px}
+.school-chip.active{border-color:var(--accent);background:var(--accent-soft)}
+.school-chip.active:hover{background:var(--accent-soft)}
+.school-chip.active:active{transform:none}
+@media(max-width:700px){.school-count{display:none}.page-buttons .button,.page-buttons .primary{font-size:0;padding:9px}.school-chip{min-width:210px}}
+.modal-backdrop{position:fixed;inset:0;background:#18201d88;backdrop-filter:blur(3px);display:grid;place-items:center;padding:18px;z-index:50;overflow-y:auto}.modal-card{width:min(540px,100%);background:var(--panel);border:1px solid var(--line);border-radius:15px;box-shadow:0 24px 70px #0004;overflow:visible}.modal-head{display:flex;align-items:flex-start;justify-content:space-between;padding:22px 24px;border-bottom:1px solid var(--line)}.modal-head h2{font-size:20px;margin:3px 0 0}.modal-close{width:34px;height:34px;border:1px solid var(--line);border-radius:8px;background:var(--panel);display:grid;place-items:center}.modal-close svg{width:17px}.student-form{padding:22px 24px;display:grid;grid-template-columns:130px 1fr 1fr;gap:12px}.modal-actions{padding:15px 24px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px}.primary:disabled{opacity:.45;cursor:not-allowed}
+.confirm-card{width:min(400px,100%);text-align:center;padding:32px 24px}.confirm-icon{color:var(--danger);margin-bottom:16px}.confirm-card h3{margin:0 0 8px;font-size:18px}.confirm-card p{font-size:13px;color:var(--muted);margin:0 0 24px;line-height:1.6}.danger-btn{background:var(--danger) !important;border-color:var(--danger) !important;color:white !important}
+.toast{position:fixed;right:25px;bottom:25px;background:#34443e;color:white;padding:12px 17px;border-radius:9px;display:flex;align-items:center;gap:10px;font-size:12px;box-shadow:0 10px 30px #0003;z-index:60;animation:toastIn .3s ease forwards}.toast svg{width:18px}@keyframes toastIn{from{transform:translateY(30px);opacity:0}to{transform:translateY(0);opacity:1}}
+@media(max-width:600px){.student-form{grid-template-columns:1fr}.modal-card{align-self:end;border-radius:20px 20px 0 0}.modal-backdrop{padding:0;align-items:flex-end}.modal-actions .button,.modal-actions .primary{flex:1}}
+.cloud-state{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--muted);margin-left:auto}.cloud-state svg{width:13px}.cloud-state.saved{color:#5d8b71}.cloud-state.error,.cloud-state.setup{color:var(--danger)}.school-count{margin-left:12px}.logout{margin-left:auto;border:0;background:transparent;color:var(--muted);padding:5px}.logout svg{width:16px}.boot-screen{min-height:100vh;background:var(--bg);display:flex;align-items:center;justify-content:center;gap:10px;color:var(--accent);font:500 13px 'Noto Sans Thai',sans-serif}.boot-screen svg{width:22px}.auth-shell{min-height:100vh;background:var(--bg);color:var(--text);display:grid;grid-template-columns:minmax(360px,45%) 1fr}.auth-visual{background:#34443e;color:#f7f4ec;padding:48px clamp(35px,6vw,90px);display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}.auth-visual:after{content:'';position:absolute;width:460px;height:460px;border:1px solid #ffffff12;border-radius:50%;right:-190px;bottom:-190px;box-shadow:0 0 0 70px #ffffff05,0 0 0 140px #ffffff03}.auth-brand{padding:0}.auth-brand>span{background:#f5f3ed;color:#34443e}.auth-visual .eyebrow{color:#a9c4b7}.auth-visual h1{font-size:clamp(36px,4vw,58px);letter-spacing:-2px;line-height:1.25;margin:10px 0}.auth-visual p{color:#cbd5d0;font-size:13px;line-height:1.9}.auth-points{display:flex;flex-direction:column;gap:10px;font-size:11px;color:#cbd5d0;z-index:1}.auth-points span{display:flex;align-items:center;gap:8px}.auth-points svg{width:15px}.auth-panel{display:grid;place-items:center;padding:30px}.auth-card{width:min(390px,100%);display:flex;flex-direction:column;gap:17px}.auth-card h2{font-size:27px;margin:4px 0}.auth-card>div:first-child p{font-size:11px;color:#7b8387;margin:0}.auth-card .field input{height:44px;background:var(--panel)}.auth-message{padding:10px 12px;border-radius:7px;background:#e6eee9;color:#50675e;font-size:11px}.auth-submit{height:44px;margin-top:4px}.auth-switch{border:0;background:transparent;color:#50675e;font-size:11px;font-weight:700}.auth-card .primary:disabled{opacity:.65}
+@media(max-width:760px){.auth-shell{grid-template-columns:1fr}.auth-visual{min-height:220px;padding:28px}.auth-visual>div:nth-child(2) h1{font-size:29px}.auth-visual>div:nth-child(2) p,.auth-points{display:none}.auth-panel{padding:30px 20px}.cloud-state{font-size:0}.cloud-state svg{width:16px}}
+
+/* Global school/class context switcher */
+.dynamic-context{gap:10px}
+.context-school-icon{width:19px!important;color:var(--accent)!important}
+.context-group{display:flex;flex-direction:column;gap:2px;min-width:0}
+.context-group small{padding-left:7px;color:var(--muted);font-size:9px;font-weight:600;letter-spacing:.35px;line-height:1}
+.context-group .select-wrap{padding:0;background:transparent;border:0;border-radius:6px}
+.context-group .select-wrap:hover{box-shadow:none;transform:none;background:var(--soft);border-color:transparent}
+.context-group .select-wrap:focus-within{box-shadow:0 0 0 3px var(--accent-soft);background:var(--soft);border-color:transparent}
+.context-group select,.context-group .select-trigger{height:28px;padding:0 27px 0 7px;font-size:13px;font-weight:700;max-width:300px}
+.class-context select,.class-context .select-trigger{max-width:120px;color:var(--accent)}
+.office-context select,.office-context .select-trigger{max-width:230px;color:var(--text)}
+.context-group .select-wrap svg{right:7px;top:6px}
+.context-arrow{color:var(--muted);font-size:22px;line-height:1;margin-top:12px}
+
+@media(max-width:700px){
+ .mobile-brand{flex:1}
+ .dynamic-context{background:var(--soft);border:1px solid var(--line);border-radius:11px;padding:7px 9px;gap:7px}
+ .context-school-icon{display:none}
+ .context-group{flex:1}
+ .school-context{min-width:0}
+ .class-context{max-width:105px}
+ .context-group small{font-size:8px}
+ .context-group select, .context-group .select-trigger{width:100%;max-width:none;font-size:12px;text-overflow:ellipsis}
+ .context-arrow{margin-top:11px}
+ .cloud-state{margin-left:auto}
+ .icon{margin-left:0}
+}
+
+/* Orange, white and blue brand theme */
+.dynamic-context{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:5px 7px}
+.dynamic-context .context-group .select-wrap{background:var(--panel);border:1px solid var(--line);border-radius:8px}
+.dynamic-context .context-group .select-wrap:hover{background:var(--panel);border-color:var(--accent)}
+.dynamic-context .school-context{min-width:260px}
+.dynamic-context .office-context{min-width:220px}
+.dynamic-context .office-context select,.dynamic-context .office-context .select-trigger{display:flex!important;width:100%!important;max-width:260px!important;color:var(--text)!important;font-weight:700!important}
+.dynamic-context .school-context select,.dynamic-context .school-context .select-trigger{display:flex!important;width:100%!important;max-width:320px!important;color:var(--text)!important;font-weight:700!important}
+.dynamic-context .class-context select,.dynamic-context .class-context .select-trigger{max-width:130px!important;color:var(--accent)!important}
+.context-arrow{color:var(--orange)}
+header>.cloud-state{margin-left:auto;margin-right:0;padding:6px 9px;border-radius:8px;background:var(--soft);font-size:10px}
+header>.cloud-state.saved{color:var(--accent)}
+header>.icon{margin-left:8px;border-color:var(--line)}
+.auth-visual{background:linear-gradient(145deg,#123d77 0%,#174a8b 70%,#1e5ea9 100%)}
+.auth-brand .brand-logo{max-width:210px;height:66px;background:#fff;border-radius:10px;padding:6px 10px}
+.auth-visual .eyebrow{color:#ff9a70}
+.auth-message{background:var(--accent-soft);color:var(--accent)}
+.auth-switch{color:var(--accent)}
+.google-auth{height:44px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);display:flex;align-items:center;justify-content:center;gap:10px;font:700 12px 'Noto Sans Thai',sans-serif;cursor:pointer;transition:.2s}
+.google-auth:hover{border-color:#8fb3dc;background:color-mix(in srgb,var(--panel) 92%,#dbeafe);transform:translateY(-1px);box-shadow:0 5px 16px rgba(23,63,104,.1)}
+.google-auth:disabled{opacity:.6;cursor:wait;transform:none}
+.google-auth svg{width:19px;height:19px;flex:0 0 auto}
+.auth-divider{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:9px}
+.auth-divider:before,.auth-divider:after{content:'';height:1px;background:var(--line);flex:1}
+.auth-divider span{white-space:nowrap}
+.auth-loading{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 50% 35%,color-mix(in srgb,var(--accent-soft) 65%,transparent),transparent 42%),var(--bg)}
+.auth-loading-card{width:min(330px,100%);display:flex;flex-direction:column;align-items:center;text-align:center;padding:34px 30px;border:1px solid var(--line);border-radius:18px;background:var(--panel);box-shadow:0 18px 55px rgba(18,61,119,.12)}
+.auth-loading-card img{width:210px;height:62px;object-fit:contain;margin-bottom:24px}
+.auth-loading-card b{font-size:14px;color:var(--text);margin-top:15px}
+.auth-loading-card small{font-size:10px;color:var(--muted);margin-top:4px}
+.auth-spinner{height:12px;display:flex;align-items:center;gap:6px}
+.auth-spinner i{width:8px;height:8px;border-radius:50%;background:var(--orange);animation:auth-bounce .85s ease-in-out infinite}
+.auth-spinner i:nth-child(2){background:var(--accent);animation-delay:.12s}
+.auth-spinner i:nth-child(3){animation-delay:.24s}
+@keyframes auth-bounce{0%,100%{transform:translateY(0);opacity:.45}50%{transform:translateY(-7px);opacity:1}}
+
+@media(max-width:700px){
+ .dynamic-context .school-context{min-width:0}
+ .dynamic-context .office-context{min-width:0}
+ .dynamic-context .school-context select, .dynamic-context .school-context .select-trigger{max-width:none!important}
+ .dynamic-context .office-context select, .dynamic-context .office-context .select-trigger{max-width:none!important}
+ header>.cloud-state{margin-left:auto;padding:6px}
+ header>.icon{margin-left:0}
+}
+.app-error-screen{padding:24px;text-align:center}.app-error-screen>div{width:min(480px,100%);padding:36px;border:1px solid #dce5f2;border-radius:24px;background:#fff;box-shadow:0 18px 55px rgba(17,42,77,.12)}.app-error-screen svg{width:48px;height:48px;color:#c94b43}.app-error-screen h1{margin:14px 0 8px}.app-error-screen p{margin:0 0 22px;color:#687a94;overflow-wrap:anywhere}

@@ -1,0 +1,5 @@
+[functions.line-stock-webhook]
+verify_jwt = false
+
+[functions.line-stock-webhook-test]
+verify_jwt = false
