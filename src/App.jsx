@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import React, {lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import Swal from 'sweetalert2';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {Sun, Moon, LayoutDashboard, Users, ClipboardPenLine, ClipboardCheck, FileText, Upload, Plus, Save, Download, ChevronDown, ChevronLeft, School, Bot, CheckCircle2, AlertCircle, X, LogOut, Cloud, CloudOff, Edit2, ShieldCheck, Clock3, Eye, UserMinus, RotateCcw, FileCog, Trash2, MapPin, Warehouse} from 'lucide-react';
@@ -13,26 +13,29 @@ import ConfirmModal from './components/ui/ConfirmModal';
 import AddSchoolModal from './components/modals/AddSchoolModal';
 import ImportOfficeModal from './components/modals/ImportOfficeModal';
 import PDFPreviewModal from './components/ui/PDFPreviewModal';
-import Dashboard from './pages/Dashboard';
-import Classroom from './pages/Classroom';
-import ScorePage from './pages/ScorePage';
-import Reports from './pages/Reports';
-import AccessAdmin from './pages/AccessAdmin';
-import TrashAdmin from './pages/TrashAdmin';
-import AuthPage from './pages/AuthPage';
-import DataPrep from './pages/DataPrep';
-import PublicSearch from './pages/PublicSearch';
-import ExamTest from './pages/ExamTest';
 import Select from './components/ui/Select';
 import Field from './components/ui/Field';
-import PendingAccess from './components/ui/PendingAccess';
-import OnsiteDashboard from './pages/OnsiteDashboard';
-import EvaluateForm from './pages/EvaluateForm';
-import TeacherForm from './pages/TeacherForm';
-import DebugEvals from './pages/DebugEvals';
-import StockPage from './pages/StockPage';
-import ScoreStatus from './pages/ScoreStatus';
 import './index.css';
+
+const Dashboard=lazy(()=>import('./pages/Dashboard'));
+const Classroom=lazy(()=>import('./pages/Classroom'));
+const ScorePage=lazy(()=>import('./pages/ScorePage'));
+const Reports=lazy(()=>import('./pages/Reports'));
+const AccessAdmin=lazy(()=>import('./pages/AccessAdmin'));
+const TrashAdmin=lazy(()=>import('./pages/TrashAdmin'));
+const AuthPage=lazy(()=>import('./pages/AuthPage'));
+const DataPrep=lazy(()=>import('./pages/DataPrep'));
+const PublicSearch=lazy(()=>import('./pages/PublicSearch'));
+const ExamTest=lazy(()=>import('./pages/ExamTest'));
+const PendingAccess=lazy(()=>import('./components/ui/PendingAccess'));
+const OnsiteDashboard=lazy(()=>import('./pages/OnsiteDashboard'));
+const EvaluateForm=lazy(()=>import('./pages/EvaluateForm'));
+const TeacherForm=lazy(()=>import('./pages/TeacherForm'));
+const DebugEvals=lazy(()=>import('./pages/DebugEvals'));
+const StockPage=lazy(()=>import('./pages/StockPage'));
+const ScoreStatus=lazy(()=>import('./pages/ScoreStatus'));
+
+const pageLoading=<div className="boot-screen"><Bot/>กำลังโหลดหน้า…</div>;
 
 const baseTabs=[['dashboard','ภาพรวม',LayoutDashboard],['classroom','จัดการชั้นเรียน',Users],['onsite','หน้างาน',MapPin],['scores','บันทึกผลทดสอบ',ClipboardPenLine],['score-status','ติดตามการกรอกคะแนน',ClipboardCheck],['reports','รายงาน',FileText],['dataprep','เตรียมข้อมูล',FileCog]];
 const BRAND_LOGO_ASPECT_RATIO = 17616 / 6250;
@@ -1607,15 +1610,15 @@ function Root(){
     }
   },[session]);
 
-  if(location.pathname === '/search') return <PublicSearch />;
-  if(location.pathname === '/exam_test') return <ExamTest />;
-  if(location.pathname === '/request') return <TeacherForm />;
+  if(location.pathname === '/search') return <Suspense fallback={pageLoading}><PublicSearch /></Suspense>;
+  if(location.pathname === '/exam_test') return <Suspense fallback={pageLoading}><ExamTest /></Suspense>;
+  if(location.pathname === '/request') return <Suspense fallback={pageLoading}><TeacherForm /></Suspense>;
   
   if(!isSupabaseConfigured)return <div className="boot-screen">ยังไม่ได้ตั้งค่า Supabase</div>;
   if(session===undefined||(session&&profile===undefined))return <div className="boot-screen"><Bot/>กำลังเชื่อมต่อระบบ…</div>;
-  if(!session)return <AuthPage/>;
-  if(profile?.role==='pending')return <PendingAccess user={session.user} onSignOut={()=>{localStorage.clear();supabase.auth.signOut()}} onRefresh={()=>window.location.reload()}/>;
-  return <App user={session.user} profile={profile||{}} onSignOut={()=>{localStorage.clear();supabase.auth.signOut()}}/>
+  if(!session)return <Suspense fallback={pageLoading}><AuthPage/></Suspense>;
+  if(profile?.role==='pending')return <Suspense fallback={pageLoading}><PendingAccess user={session.user} onSignOut={()=>{localStorage.clear();supabase.auth.signOut()}} onRefresh={()=>window.location.reload()}/></Suspense>;
+  return <Suspense fallback={pageLoading}><App user={session.user} profile={profile||{}} onSignOut={()=>{localStorage.clear();supabase.auth.signOut()}}/></Suspense>
 }
 
 export default Root;
