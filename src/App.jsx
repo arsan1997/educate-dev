@@ -1315,14 +1315,14 @@ function App({user,profile,onSignOut}){
    const examName=reportExam(sess).replace(/\s+(?=\d)/g,'');
    return [c.name,eligibleStudents.length,absent,sess.robot||'Code & Go',sess.teachingPeriod||'-',term,examName,sess.trainer||'-'];
   });
-  const detailColumnWidths=[19,17,17,25,19,13,26,39.9];
+  const detailColumnWidths=[22,16,16,25,19,13,26,38.9];
   const detailColumnStyles=detailColumnWidths.reduce((styles,width,index)=>{
    styles[index]={cellWidth:width};
    if(index===7)styles[index].fontSize=pdfFontSize(11);
    return styles;
   },{});
   const detailColumnLayout={
-   0:{maxFontSize:12,minFontSize:10,maxLines:2},
+   0:{maxFontSize:12,minFontSize:9.5,maxLines:1},
    3:{maxFontSize:12,minFontSize:10,maxLines:2},
    4:{maxFontSize:12,minFontSize:10,maxLines:2},
    6:{maxFontSize:12,minFontSize:10,maxLines:2},
