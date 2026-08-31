@@ -1351,9 +1351,9 @@ function App({user,profile,onSignOut}){
    theme:'grid',
    head:[['ระดับชั้น','จำนวน\nนักเรียน','ขาดสอบ','ชื่อหุ่นยนต์\n(Robot)','คาบสอน\nปัจจุบัน','เทอม','ชุดข้อสอบ','วิทยากร\nผู้ประเมิน']],
    body:detailBody,
-   styles:{font:'THSarabun',fontSize:pdfFontSize(12),cellPadding:1.2,halign:'center',valign:'middle',overflow:'linebreak',lineWidth:.3,lineColor:[0,0,0],textColor:[0,0,0],fillColor:[255,255,255]},
+   styles:{font:'THSarabun',fontSize:pdfFontSize(12),cellPadding:{top:1.8,right:1.2,bottom:1.8,left:1.2},halign:'center',valign:'middle',overflow:'linebreak',lineWidth:.3,lineColor:[0,0,0],textColor:[0,0,0],fillColor:[255,255,255]},
    headStyles:{font:'THSarabun',fontStyle:'bold',fontSize:pdfFontSize(11),cellPadding:.5,fillColor:[217,225,242],textColor:[0,0,0],minCellHeight:17},
-   bodyStyles:{minCellHeight:8.5},
+   bodyStyles:{minCellHeight:9.5},
    columnStyles:detailColumnStyles,
    rowPageBreak:'avoid',
    showHead:'everyPage'
