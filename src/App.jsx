@@ -1210,13 +1210,27 @@ function App({user,profile,onSignOut}){
     return lines.join('\n');
    }).join('\n');
   };
-  const fitPdfText=(value,{maxWidth,maxFontSize,minFontSize,maxLines=Infinity,fontStyle='normal'})=>{
+  const wrapEvaluatorText=(value,maxWidth,fontSize,fontStyle='normal')=>{
+   doc.setFont('THSarabun',fontStyle);
+   doc.setFontSize(pdfFontSize(fontSize));
+   return String(value??'').split(/\r\n|\r|\n/).map(line=>{
+    const units=line.match(/[^,]*,|[^,]+/g)||[''];
+    const lines=[];let current='';
+    units.forEach(unit=>{
+     const next=current+unit;
+     if(current&&doc.getTextWidth(next)>maxWidth){lines.push(current);current=unit}else current=next;
+    });
+    if(current||!lines.length)lines.push(current);
+    return lines.join('\n');
+   }).join('\n');
+  };
+  const fitPdfText=(value,{maxWidth,maxFontSize,minFontSize,maxLines=Infinity,fontStyle='normal',wrap=wrapPdfText})=>{
    const minimum=Number(minFontSize),maximum=Number(maxFontSize);
    for(let fontSize=maximum;fontSize>=minimum;fontSize=Math.round((fontSize-.5)*10)/10){
-    const text=wrapPdfText(value,maxWidth,fontSize,fontStyle);
+    const text=wrap(value,maxWidth,fontSize,fontStyle);
     if(text.split('\n').length<=maxLines)return {text,fontSize:pdfFontSize(fontSize)};
    }
-   return {text:wrapPdfText(value,maxWidth,minimum,fontStyle),fontSize:pdfFontSize(minimum)};
+   return {text:wrap(value,maxWidth,minimum,fontStyle),fontSize:pdfFontSize(minimum)};
   };
   const formatThaiDate = (start, end) => {
    if(!start)return '-';
@@ -1266,7 +1280,7 @@ function App({user,profile,onSignOut}){
    3:{maxFontSize:12,minFontSize:10,maxLines:2},
    4:{maxFontSize:12,minFontSize:10,maxLines:2},
    6:{maxFontSize:12,minFontSize:10,maxLines:2},
-   7:{maxFontSize:11,minFontSize:9.5,maxLines:3}
+   7:{maxFontSize:11,minFontSize:9.5,maxLines:3,wrap:wrapEvaluatorText}
   };
   const detailBody=detailRows.map(row=>row.map((value,columnIndex)=>{
    const layout=detailColumnLayout[columnIndex];
