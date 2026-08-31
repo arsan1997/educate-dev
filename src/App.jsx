@@ -55,6 +55,10 @@ const sessionResultCount=session=>Object.values(session?.entries||{}).filter(ent
 const sessionHasMetadata=session=>Boolean(session?.date||session?.endDate||session?.robot||session?.exam||session?.teachingPeriod||session?.trainer||session?.term||session?.year||session?.feedback?.detail||session?.feedback?.summary);
 const sessionHasAnyData=session=>sessionHasRecordedResult(session)||sessionHasMetadata(session);
 const sessionIsBlank=session=>!sessionHasAnyData(session);
+const feedbackTextFromSession=session=>[session?.feedback?.detail,session?.feedback?.summary]
+ .filter(value=>value!==undefined&&value!==null&&String(value).length>0)
+ .map(String)
+ .join('\n');
 
 function App({user,profile,onSignOut}){
   const location = useLocation();
@@ -1251,23 +1255,23 @@ function App({user,profile,onSignOut}){
   const feedbackByClassroom=overrides.feedbackByClassroom||{};
   const feedbackRows=school.classrooms.flatMap(c=>{
    const sess=sessionFor(c);
-   const defaultText=[sess.feedback?.detail,sess.feedback?.summary].map(v=>v?.trim()).filter(Boolean).join('\n');
+   const defaultText=feedbackTextFromSession(sess);
    const text=Object.prototype.hasOwnProperty.call(feedbackByClassroom,c.id)?String(feedbackByClassroom[c.id]??''):defaultText;
    return text?[[c.name,text]]:[];
   });
   if(isVisible('feedback')&&feedbackRows.length){
   const feedbackTextMaxWidth=152.2;
   const thaiWordSegmenter=typeof Intl!=='undefined'&&Intl.Segmenter?new Intl.Segmenter('th',{granularity:'word'}):null;
-  const wrapThaiText=value=>String(value||'').split('\n').map(line=>{
+  const wrapThaiText=value=>String(value??'').split(/\r\n|\r|\n/).map(line=>{
    const segments=thaiWordSegmenter?Array.from(thaiWordSegmenter.segment(line),part=>part.segment):Array.from(line);
    const lines=[];let current='';
    segments.forEach(segment=>{
     const next=current+segment;
     if(current&&doc.getTextWidth(next)>feedbackTextMaxWidth){
-     lines.push(current.trimEnd());current=segment.trimStart();
+     lines.push(current);current=segment;
     }else current=next;
    });
-   if(current||!lines.length)lines.push(current.trimEnd());
+   if(current||!lines.length)lines.push(current);
    return lines.join('\n');
   }).join('\n');
   const wrappedFeedbackRows=feedbackRows.map(([classroomName,text])=>[classroomName,wrapThaiText(text)]);
@@ -1315,7 +1319,7 @@ function App({user,profile,onSignOut}){
   const feedbackRows=(school?.classrooms||[]).map(classroom=>{
    const matchingSessions=(school?.sessions||[]).filter(item=>item.classId===classroom.id);
    const selectedSession=matchingSessions.find(item=>item.test===session?.test)||matchingSessions.at(-1)||{};
-   const text=[selectedSession.feedback?.detail,selectedSession.feedback?.summary].map(value=>value?.trim()).filter(Boolean).join('\n');
+   const text=feedbackTextFromSession(selectedSession);
    return {classroomId:classroom.id,classroomName:classroom.name,text};
   });
   return {type,schoolName:school?.name||'',term:school?.term||'',year:school?.year||'',layout:{schoolName:true,reportTitle:true,curriculum:true,termYear:true,logo:true,details:true,feedback:true,fontScale:1},feedbackRows};
@@ -1343,7 +1347,7 @@ function App({user,profile,onSignOut}){
    const {default:JSZip}=await import('jszip');
    const xmlEscape=value=>String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
    const layout=draft.layout||{},visible=key=>layout[key]!==false;
-   const run=(value,bold=false)=>String(value??'').split('\n').map((line,index)=>`${index?'<w:br/>':''}<w:r><w:rPr><w:rFonts w:ascii="TH Sarabun New" w:hAnsi="TH Sarabun New" w:eastAsia="TH Sarabun New"/>${bold?'<w:b/>':''}<w:sz w:val="24"/></w:rPr><w:t xml:space="preserve">${xmlEscape(line)}</w:t></w:r>`).join('');
+   const run=(value,bold=false)=>String(value??'').split(/\r\n|\r|\n/).map((line,index)=>`${index?'<w:br/>':''}<w:r><w:rPr><w:rFonts w:ascii="TH Sarabun New" w:hAnsi="TH Sarabun New" w:eastAsia="TH Sarabun New"/>${bold?'<w:b/>':''}<w:sz w:val="24"/></w:rPr><w:t xml:space="preserve">${xmlEscape(line)}</w:t></w:r>`).join('');
    const paragraph=(value='',bold=false,align='left')=>`<w:p><w:pPr><w:jc w:val="${align}"/></w:pPr>${run(value,bold)}</w:p>`;
    const cell=(value,header=false)=>`<w:tc><w:tcPr><w:tcW w:w="2200" w:type="dxa"/>${header?'<w:shd w:fill="D9E1F2"/>':''}</w:tcPr>${paragraph(value,header,'center')}</w:tc>`;
    const table=rows=>`<w:tbl><w:tblPr><w:tblBorders><w:top w:val="single" w:sz="6" w:color="000000"/><w:left w:val="single" w:sz="6" w:color="000000"/><w:bottom w:val="single" w:sz="6" w:color="000000"/><w:right w:val="single" w:sz="6" w:color="000000"/><w:insideH w:val="single" w:sz="6" w:color="000000"/><w:insideV w:val="single" w:sz="6" w:color="000000"/></w:tblBorders></w:tblPr>${rows.map((row,rowIndex)=>`<w:tr>${row.map(value=>cell(value,rowIndex===0)).join('')}</w:tr>`).join('')}</w:tbl>`;
