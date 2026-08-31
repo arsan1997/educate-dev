@@ -540,7 +540,7 @@ export async function loadEvaluationForSessionSync(classId, term, year, expected
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
     .limit(50);
-  if (error) console.error("Sync error:", error);
+  if (error) throw error;
   const rows=(data||[]).filter(row=>matchesRobot(row,criteria));
   const exact=rows.find(row=>sameEvaluationContext(row,criteria));
   if(exact)return exact;

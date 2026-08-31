@@ -74,28 +74,32 @@ export default function EvaluateForm() {
 
   // Auto-discover the latest teaching period they worked on today when class/date changes
   useEffect(() => {
+    let active = true;
     async function discoverLatest() {
       if (form.id) return;
       if (form.classId && form.date) {
         try {
           const latest = await loadLatestEvaluationForDay(form.classId, form.date);
-          if (latest && String(latest.teaching_period) !== String(form.teachingPeriod)) {
+          if (active && latest && String(latest.teaching_period) !== String(form.teachingPeriod)) {
             setForm(prev => ({ ...prev, teachingPeriod: latest.teaching_period || '1' }));
           }
         } catch (err) {
-          console.error("Discovery error", err);
+          if (active) console.error("Discovery error", err);
         }
       }
     }
     discoverLatest();
+    return () => { active = false; };
   }, [form.id, form.classId, form.date]);
 
   useEffect(() => {
+    let active = true;
     async function checkExisting() {
       if (form.id) return;
       if (form.classId && form.date && form.teachingPeriod) {
         try {
           const existing = await loadExistingEvaluation(form);
+          if (!active) return;
           if (existing) {
             setForm(prev => ({
               ...prev,
@@ -121,11 +125,12 @@ export default function EvaluateForm() {
             }));
           }
         } catch (err) {
-          console.error("Failed to check existing evaluation", err);
+          if (active) console.error("Failed to check existing evaluation", err);
         }
       }
     }
     checkExisting();
+    return () => { active = false; };
   }, [form.id, form.classId, form.date, form.teachingPeriod, form.term, form.period, form.examLevel, form.robot]);
 
   const selectedSchool = schools.find(s => s.id === form.schoolId);
