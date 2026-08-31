@@ -1242,12 +1242,12 @@ function App({user,profile,onSignOut}){
    theme:'grid',
    head:[['ระดับชั้น','จำนวน\nนักเรียน','ขาดสอบ','ชื่อหุ่นยนต์\n(Robot)','คาบสอน\nปัจจุบัน','เทอม','ชุดข้อสอบ','วิทยากร\nผู้ประเมิน']],
    body:detailRows,
-   styles:{font:'THSarabun',fontSize:pdfFontSize(12),cellPadding:1.2,halign:'center',valign:'middle',lineWidth:.3,lineColor:[0,0,0],textColor:[0,0,0],fillColor:[255,255,255]},
+   styles:{font:'THSarabun',fontSize:pdfFontSize(12),cellPadding:1.2,halign:'center',valign:'middle',overflow:'linebreak',lineWidth:.3,lineColor:[0,0,0],textColor:[0,0,0],fillColor:[255,255,255]},
    headStyles:{font:'THSarabun',fontStyle:'bold',fontSize:pdfFontSize(11),cellPadding:.5,fillColor:[217,225,242],textColor:[0,0,0],minCellHeight:17},
    bodyStyles:{minCellHeight:8.5},
    columnStyles:{
-    0:{cellWidth:20},1:{cellWidth:17},2:{cellWidth:17},3:{cellWidth:27},
-    4:{cellWidth:19},5:{cellWidth:13},6:{cellWidth:29},7:{cellWidth:33.9}
+    0:{cellWidth:19},1:{cellWidth:17},2:{cellWidth:17},3:{cellWidth:25},
+    4:{cellWidth:19},5:{cellWidth:13},6:{cellWidth:26},7:{cellWidth:39.9,fontSize:pdfFontSize(11)}
    }
   });
   }
