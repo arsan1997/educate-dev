@@ -1188,6 +1188,36 @@ function App({user,profile,onSignOut}){
   const displaySchoolName=rawSchoolName.replace(/^โรงเรียน\s*/,'').trim();
   const fileSchoolName=/^โรงเรียน/.test(rawSchoolName)?rawSchoolName:`โรงเรียน${rawSchoolName}`;
   const testNumber=(session?.test||'').match(/\d+/)?.[0]||'1';
+  const thaiWordSegmenter=typeof Intl!=='undefined'&&Intl.Segmenter?new Intl.Segmenter('th',{granularity:'word'}):null;
+  const graphemeSegmenter=typeof Intl!=='undefined'&&Intl.Segmenter?new Intl.Segmenter('th',{granularity:'grapheme'}):null;
+  const wrapPdfText=(value,maxWidth,fontSize,fontStyle='normal')=>{
+   doc.setFont('THSarabun',fontStyle);
+   doc.setFontSize(pdfFontSize(fontSize));
+   return String(value??'').split(/\r\n|\r|\n/).map(line=>{
+    const segments=thaiWordSegmenter?Array.from(thaiWordSegmenter.segment(line),part=>part.segment):Array.from(line);
+    const lines=[];let current='';
+    const appendPart=part=>{
+     const next=current+part;
+     if(current&&doc.getTextWidth(next)>maxWidth){lines.push(current);current=part}else current=next;
+    };
+    segments.forEach(segment=>{
+     const parts=doc.getTextWidth(segment)>maxWidth
+      ?(graphemeSegmenter?Array.from(graphemeSegmenter.segment(segment),part=>part.segment):Array.from(segment))
+      :[segment];
+     parts.forEach(appendPart);
+    });
+    if(current||!lines.length)lines.push(current);
+    return lines.join('\n');
+   }).join('\n');
+  };
+  const fitPdfText=(value,{maxWidth,maxFontSize,minFontSize,maxLines=Infinity,fontStyle='normal'})=>{
+   const minimum=Number(minFontSize),maximum=Number(maxFontSize);
+   for(let fontSize=maximum;fontSize>=minimum;fontSize=Math.round((fontSize-.5)*10)/10){
+    const text=wrapPdfText(value,maxWidth,fontSize,fontStyle);
+    if(text.split('\n').length<=maxLines)return {text,fontSize:pdfFontSize(fontSize)};
+   }
+   return {text:wrapPdfText(value,maxWidth,minimum,fontStyle),fontSize:pdfFontSize(minimum)};
+  };
   const formatThaiDate = (start, end) => {
    if(!start)return '-';
    const [y1,m1,d1]=String(start).slice(0,10).split('-').map(Number);
@@ -1225,6 +1255,25 @@ function App({user,profile,onSignOut}){
    const examName=reportExam(sess).replace(/\s+(?=\d)/g,'');
    return [c.name,eligibleStudents.length,absent,sess.robot||'Code & Go',sess.teachingPeriod||'-',term,examName,sess.trainer||'-'];
   });
+  const detailColumnWidths=[19,17,17,25,19,13,26,39.9];
+  const detailColumnStyles=detailColumnWidths.reduce((styles,width,index)=>{
+   styles[index]={cellWidth:width};
+   if(index===7)styles[index].fontSize=pdfFontSize(11);
+   return styles;
+  },{});
+  const detailColumnLayout={
+   0:{maxFontSize:12,minFontSize:10,maxLines:2},
+   3:{maxFontSize:12,minFontSize:10,maxLines:2},
+   4:{maxFontSize:12,minFontSize:10,maxLines:2},
+   6:{maxFontSize:12,minFontSize:10,maxLines:2},
+   7:{maxFontSize:11,minFontSize:9.5,maxLines:3}
+  };
+  const detailBody=detailRows.map(row=>row.map((value,columnIndex)=>{
+   const layout=detailColumnLayout[columnIndex];
+   if(!layout||typeof value!=='string')return value;
+   const fitted=fitPdfText(value,{...layout,maxWidth:detailColumnWidths[columnIndex]-2.4});
+   return {content:fitted.text,styles:{fontSize:fitted.fontSize}};
+  }));
 
   if(isVisible('details')){
   doc.setFillColor(217,225,242);
@@ -1241,14 +1290,13 @@ function App({user,profile,onSignOut}){
    tableWidth:175.9,
    theme:'grid',
    head:[['ระดับชั้น','จำนวน\nนักเรียน','ขาดสอบ','ชื่อหุ่นยนต์\n(Robot)','คาบสอน\nปัจจุบัน','เทอม','ชุดข้อสอบ','วิทยากร\nผู้ประเมิน']],
-   body:detailRows,
+   body:detailBody,
    styles:{font:'THSarabun',fontSize:pdfFontSize(12),cellPadding:1.2,halign:'center',valign:'middle',overflow:'linebreak',lineWidth:.3,lineColor:[0,0,0],textColor:[0,0,0],fillColor:[255,255,255]},
    headStyles:{font:'THSarabun',fontStyle:'bold',fontSize:pdfFontSize(11),cellPadding:.5,fillColor:[217,225,242],textColor:[0,0,0],minCellHeight:17},
    bodyStyles:{minCellHeight:8.5},
-   columnStyles:{
-    0:{cellWidth:19},1:{cellWidth:17},2:{cellWidth:17},3:{cellWidth:25},
-    4:{cellWidth:19},5:{cellWidth:13},6:{cellWidth:26},7:{cellWidth:39.9,fontSize:pdfFontSize(11)}
-   }
+   columnStyles:detailColumnStyles,
+   rowPageBreak:'avoid',
+   showHead:'everyPage'
   });
   }
 
@@ -1261,24 +1309,16 @@ function App({user,profile,onSignOut}){
   });
   if(isVisible('feedback')&&feedbackRows.length){
   const feedbackTextMaxWidth=152.2;
-  const thaiWordSegmenter=typeof Intl!=='undefined'&&Intl.Segmenter?new Intl.Segmenter('th',{granularity:'word'}):null;
-  const wrapThaiText=value=>String(value??'').split(/\r\n|\r|\n/).map(line=>{
-   const segments=thaiWordSegmenter?Array.from(thaiWordSegmenter.segment(line),part=>part.segment):Array.from(line);
-   const lines=[];let current='';
-   segments.forEach(segment=>{
-    const next=current+segment;
-    if(current&&doc.getTextWidth(next)>feedbackTextMaxWidth){
-     lines.push(current);current=segment;
-    }else current=next;
-   });
-   if(current||!lines.length)lines.push(current);
-   return lines.join('\n');
-  }).join('\n');
-  const wrappedFeedbackRows=feedbackRows.map(([classroomName,text])=>[classroomName,wrapThaiText(text)]);
+  const fittedFeedbackRows=feedbackRows.map(([classroomName,text])=>{
+   const fitted=fitPdfText(text,{maxWidth:feedbackTextMaxWidth,maxFontSize:12,minFontSize:10,maxLines:8});
+   return {classroomName,text:fitted.text,fontSize:fitted.fontSize};
+  });
+  const wrappedFeedbackRows=fittedFeedbackRows.map(row=>[row.classroomName,{content:row.text,styles:{fontSize:row.fontSize}}]);
   doc.setFont('THSarabun','normal');
    doc.setFontSize(pdfFontSize(12));
-  const feedbackLineHeight=doc.getFontSize()/doc.internal.scaleFactor*(doc.getLineHeightFactor?.()||1.15);
-  const firstFeedbackRowHeight=Math.max(1,String(wrappedFeedbackRows[0][1]||'').split('\n').length)*feedbackLineHeight+4;
+  const feedbackLineHeight=fontSize=>fontSize/doc.internal.scaleFactor*(doc.getLineHeightFactor?.()||1.15);
+  const firstFeedbackRow=fittedFeedbackRows[0];
+  const firstFeedbackRowHeight=Math.max(1,firstFeedbackRow.text.split('\n').length)*feedbackLineHeight(firstFeedbackRow.fontSize)+4;
   const pageHeight=doc.internal.pageSize.getHeight(),summaryTitleGap=8,feedbackHeaderHeight=8.5,bottomSafe=40;
   let summaryTitleY=(doc.lastAutoTable?.finalY||109)+15;
   if(summaryTitleY+summaryTitleGap+feedbackHeaderHeight+firstFeedbackRowHeight>pageHeight-bottomSafe){doc.addPage();summaryTitleY=20;}
