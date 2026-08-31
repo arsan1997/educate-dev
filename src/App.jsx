@@ -1,10 +1,10 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import Swal from 'sweetalert2';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {Sun, Moon, LayoutDashboard, Users, ClipboardPenLine, ClipboardCheck, FileText, Upload, Plus, Save, Download, ChevronDown, ChevronLeft, School, Bot, CheckCircle2, AlertCircle, X, LogOut, Cloud, CloudOff, Edit2, ShieldCheck, Clock3, Eye, UserMinus, RotateCcw, FileCog, Trash2, MapPin, Warehouse} from 'lucide-react';
 import {sampleSchool,parseSchoolWorkbook,calcStats,calcRanks,ROBOT_TYPES,compareClassNames,defaultExamForRobot,examOptionsForRobot} from './model';
 import {supabase,isSupabaseConfigured} from './supabase';
-import {loadSchoolIndex,loadSchoolDetail,loadClassroomDetail,loadDashboardInsights,saveSchoolMeta,saveSessionRows,saveClassroomStudents,saveClassroomMeta,saveResultRows,saveSchoolBundle,deleteSchool,loadCurrentProfile,loadAccessAdmin,updateUserAccess,saveStudentOrder,loadOffices,createOffice,deleteOffice,loadAllProfiles,saveSchools,deleteClassroom,deleteSession,acquireLock,verifyLockOwnership} from './dataService';
+import {loadSchoolIndex,loadSchoolDetail,loadClassroomDetail,loadDashboardInsights,saveSchoolMeta,saveSessionRows,saveClassroomStudents,saveClassroomMeta,saveResultRows,saveSchoolBundle,deleteSchool,loadCurrentProfile,loadAccessAdmin,updateUserAccess,saveStudentOrder,loadOffices,createOffice,deleteOffice,loadAllProfiles,saveSchools,deleteClassroom,deleteSession,acquireLock,verifyLockOwnership,searchSchoolStudents} from './dataService';
 import brandLogo from './assets/logo.png';
 import './styles.css';
 import './dynamic.css';
@@ -89,8 +89,9 @@ function App({user,profile,onSignOut}){
   const tabs=baseTabs;
   const readOnly=profile.role==='viewer';
   const viewerLocked=readOnly&&['classroom','scores','reports'].includes(tab);
-  const refs=useRef({}),previousPathRef=useRef(path),cloudReady=useRef(false),schoolLoadRequest=useRef(0),dirtyRef=useRef({schools:new Set(),sessions:new Set(),classrooms:new Set(),results:new Map()}),lockRetryTimer=useRef(null),[cloudStatus,setCloudStatus]=useState('loading'),[contextLoading,setContextLoading]=useState(false),[roomRefreshing,setRoomRefreshing]=useState(false),school=schools.find(s=>s.id===schoolId)||schools[0],classroom=school?.classrooms.find(c=>c.id===classId)||school?.classrooms[0];
-  const scoreTargetRequest=useRef('');
+  const refs=useRef({}),previousPathRef=useRef(path),cloudReady=useRef(false),schoolLoadRequest=useRef(0),dirtyRef=useRef({schools:new Set(),sessions:new Set(),classrooms:new Set(),results:new Map()}),lockRetryTimer=useRef(null),[cloudStatus,setCloudStatus]=useState('loading'),[contextLoading,setContextLoading]=useState(false),[contextLoadError,setContextLoadError]=useState(''),[roomRefreshing,setRoomRefreshing]=useState(false),school=schools.find(s=>s.id===schoolId)||schools[0],classroom=school?.classrooms.find(c=>c.id===classId)||school?.classrooms[0];
+  const scoreTargetRequest=useRef(''),contextRetryRef=useRef(null);
+  const searchStudentsInSchool=useCallback((targetSchoolId,classroomIds,term)=>searchSchoolStudents(targetSchoolId,classroomIds,term),[]);
   const classSessions=(school?.sessions.filter(s=>s.classId===classroom?.id)||[]).sort((a,b)=>(parseInt((a.test.match(/\d+/)||[])[0])||0)-(parseInt((b.test.match(/\d+/)||[])[0])||0)),session=classSessions.find(s=>s.id===sessionId)||classSessions[0];
   const classroomStudents=(classroom?.students||[]).map(s=>({...s,score:'',time:'',absent:false,updatedBy:'',...(session?.entries?.[s.id]||{})}));
   const students=classroomStudents.filter(s=>s.active!==false||session?.entries?.[s.id]);
@@ -276,7 +277,7 @@ function App({user,profile,onSignOut}){
       }).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [sessionId, user.id]);
-  const selectSchoolNow=id=>{const s=schools.find(x=>x.id===id),request=++schoolLoadRequest.current;setSchoolId(id);setClassId('');setSessionId('');if(!s||s.loaded)return;setContextLoading(true);loadSchoolDetail(id).then(detail=>{setSchools(all=>all.map(item=>item.id===id?{...detail,summary:item.summary}:item));if(schoolLoadRequest.current===request){setClassId('');setSessionId('')}}).catch(error=>{console.error(error);flash(`โหลดข้อมูลโรงเรียนไม่สำเร็จ: ${error.message}`)}).finally(()=>{if(schoolLoadRequest.current===request)setContextLoading(false)})};
+  const selectSchoolNow=id=>{const s=schools.find(x=>x.id===id),request=++schoolLoadRequest.current;setSchoolId(id);setClassId('');setSessionId('');setContextLoadError('');contextRetryRef.current=()=>selectSchoolNow(id);if(!s||s.loaded){contextRetryRef.current=null;return}setContextLoading(true);loadSchoolDetail(id).then(detail=>{setSchools(all=>all.map(item=>item.id===id?{...detail,summary:item.summary}:item));if(schoolLoadRequest.current===request){setClassId('');setSessionId('');contextRetryRef.current=null}}).catch(error=>{console.error(error);if(schoolLoadRequest.current===request)setContextLoadError(`โหลดข้อมูลโรงเรียนไม่สำเร็จ: ${error.message}`)}).finally(()=>{if(schoolLoadRequest.current===request)setContextLoading(false)})};
   const guardNavigation = (action) => {
     if (hasDirty()) {
       setConfirming({
@@ -326,21 +327,23 @@ function App({user,profile,onSignOut}){
    const hasClassSessions=scoreSchool?.sessions.some(session=>session.classId===id);
    if(scoreSchoolIsPartial&&!hasClassSessions){
     const request=++schoolLoadRequest.current;
-    setClassId(id);setSessionId('');setContextLoading(true);
+     setClassId(id);setSessionId('');setContextLoadError('');contextRetryRef.current=()=>selectClassNow(id);setContextLoading(true);
     loadClassroomDetail(id).then(detail=>{
      if(schoolLoadRequest.current!==request)return;
      setSchools(all=>all.map(item=>item.id===schoolId?mergeClassroomDetailIntoSchool(item,detail):item));
-     setSessionId(detail.sessions[0]?.id||'');
-    }).catch(error=>{
-     console.error(error);
-     flash(`โหลดข้อมูลห้องเรียนไม่สำเร็จ: ${error.message}`);
+      setSessionId(detail.sessions[0]?.id||'');
+      contextRetryRef.current=null;
+     }).catch(error=>{
+      console.error(error);
+      if(schoolLoadRequest.current===request)setContextLoadError(`โหลดข้อมูลห้องเรียนไม่สำเร็จ: ${error.message}`);
     }).finally(()=>{
      if(schoolLoadRequest.current===request)setContextLoading(false);
     });
     return;
    }
-   const availableSessions=path.startsWith('/scores')?scoreSchool?.sessions:school?.sessions;
-   setClassId(id);setSessionId(availableSessions?.find(session=>session.classId===id)?.id||'');
+    const availableSessions=path.startsWith('/scores')?scoreSchool?.sessions:school?.sessions;
+    setContextLoadError('');contextRetryRef.current=null;
+    setClassId(id);setSessionId(availableSessions?.find(session=>session.classId===id)?.id||'');
   };
   const selectClass=id=>{if(id&&id===classId)return true; return guardNavigation(()=>selectClassNow(id));};
   useEffect(()=>{
@@ -370,35 +373,44 @@ function App({user,profile,onSignOut}){
       setClassId(nextClass);
       setSessionId(nextSession);
     };
-    if(target.loaded){
+     if(target.loaded){
       applyTarget(target);
+      setContextLoadError('');
+      contextRetryRef.current=null;
       setContextLoading(false);
       return;
     }
-    if(!nextClassId){
+     if(!nextClassId){
       applyTarget(target);
+      setContextLoadError('');
+      contextRetryRef.current=null;
       setContextLoading(false);
       return;
     }
     const targetClass=target.classrooms.find(item=>String(item.id)===String(nextClassId));
     const targetClassAlreadyLoaded=target.sessions.some(item=>String(item.classId)===String(nextClassId))||targetClass?.students?.length>0;
-    if(targetClassAlreadyLoaded){
+     if(targetClassAlreadyLoaded){
       applyTarget(target);
+      setContextLoadError('');
+      contextRetryRef.current=null;
       setContextLoading(false);
       return;
     }
     const request=++schoolLoadRequest.current;
     setSchoolId(target.id);
-    setClassId('');
-    setSessionId('');
+     setClassId('');
+     setSessionId('');
+     setContextLoadError('');
+     contextRetryRef.current=()=>window.location.reload();
     setContextLoading(true);
     loadClassroomDetail(nextClassId).then(detail=>{
       if(schoolLoadRequest.current!==request)return;
-      setSchools(current=>current.map(item=>item.id===target.id?mergeClassroomDetailIntoSchool(item,detail):item));
+       setSchools(current=>current.map(item=>item.id===target.id?mergeClassroomDetailIntoSchool(item,detail):item));
+       contextRetryRef.current=null;
       applyTarget({...target,classrooms:target.classrooms.map(item=>item.id===detail.classroom.id?detail.classroom:item),sessions:detail.sessions},detail.sessions);
-    }).catch(error=>{
+     }).catch(error=>{
       console.error(error);
-      flash(`โหลดข้อมูลโรงเรียนไม่สำเร็จ: ${error.message}`);
+      if(schoolLoadRequest.current===request)setContextLoadError(`โหลดข้อมูลห้องเรียนไม่สำเร็จ: ${error.message}`);
     }).finally(()=>{
       if(schoolLoadRequest.current===request)setContextLoading(false);
     });
@@ -1561,12 +1573,13 @@ function App({user,profile,onSignOut}){
       <section className={`content${viewerLocked?' viewer-locked':''}`} onClickCapture={e=>{if(viewerLocked){e.preventDefault();e.stopPropagation()}}} onKeyDownCapture={e=>{if(viewerLocked)e.preventDefault()}}>
       {viewerLocked&&<div className="viewer-lock-overlay" title="บัญชีดูอย่างเดียว ไม่สามารถแก้ไขหรือส่งออกข้อมูลได้" aria-label="ไม่สามารถกดได้"/>}
        {contextLoading&&<div className="context-loading"><Clock3/><span><b>กำลังโหลดข้อมูลโรงเรียน</b><small>โหลดเฉพาะโรงเรียนที่เลือกเพื่อลดการใช้โควตา</small></span></div>}
+       {contextLoadError&&!contextLoading&&<div className="context-load-error"><AlertCircle/><span><b>{contextLoadError}</b><small>กรุณาตรวจสอบการเชื่อมต่อ แล้วลองโหลดข้อมูลอีกครั้ง</small></span><button type="button" className="button" onClick={()=>contextRetryRef.current?contextRetryRef.current():window.location.reload()}><RotateCcw/>ลองใหม่</button></div>}
        <Routes>
          <Route path="/" element={<Dashboard stats={dashboardStats} classes={dashboardRows} school={school} schools={schools} offices={offices} onSelectSchool={selectSchoolNow}/>} />
          <Route path="/onsite" element={<OnsiteDashboard flash={flash} offices={offices} />} />
          <Route path="/evaluate" element={<EvaluateForm />} />
          <Route path="/stock" element={<StockPage schools={schools} offices={offices} user={user} profile={profile} flash={flash}/>} />
-          <Route path="/scores" element={<ScorePage meta={scoreMeta} setMeta={setMeta} students={scoreStudents} update={update} move={move} refs={refs} feedback={scoreFeedback} setFeedback={setFeedback} stats={scoreStats} flash={flash} schools={schools} offices={offices} schoolId={schoolId||''} classId={classId||''} classrooms={scoreSchool?.classrooms||[]} onSelectSchool={selectSchool} onSelectClass={selectClass} sessions={scoreClassSessions} sessionId={scoreSession?.id} onSelectSession={id=>guardNavigation(()=>setSessionId(id))} onAddSession={addSession} onEditSession={editSession} onDeleteSession={removeSession} onRefreshClassroom={refreshClassroom} isRefreshingRoom={roomRefreshing} onPreviewPDF={openPDFPreview} onPreviewScoreTablePDF={openScoreTablePDFPreview} onSave={flushChanges} onResetSession={resetCurrentSession} saveBlocked={scoreEntryBlocked} blockedBy={scoreSaveBlocked?.lockedBy||''} retryingSaveLock={retryingScoreLock} onRetrySaveLock={retryScoreSaveLock} onReloadAfterLock={()=>window.location.reload()} userProfiles={userProfiles} user={user}/>} />
+           <Route path="/scores" element={<ScorePage meta={scoreMeta} setMeta={setMeta} students={scoreStudents} update={update} move={move} refs={refs} feedback={scoreFeedback} stats={scoreStats} flash={flash} schools={schools} offices={offices} schoolId={schoolId||''} classId={classId||''} classrooms={scoreSchool?.classrooms||[]} onSelectSchool={selectSchool} onSelectClass={selectClass} onSearchStudents={searchStudentsInSchool} sessions={scoreClassSessions} sessionId={scoreSession?.id} onSelectSession={id=>guardNavigation(()=>setSessionId(id))} onAddSession={addSession} onEditSession={editSession} onDeleteSession={removeSession} onRefreshClassroom={refreshClassroom} isRefreshingRoom={roomRefreshing} onPreviewPDF={openPDFPreview} onPreviewScoreTablePDF={openScoreTablePDFPreview} onSave={flushChanges} onResetSession={resetCurrentSession} saveBlocked={scoreEntryBlocked} blockedBy={scoreSaveBlocked?.lockedBy||''} retryingSaveLock={retryingScoreLock} onRetrySaveLock={retryScoreSaveLock} onReloadAfterLock={()=>window.location.reload()} userProfiles={userProfiles} user={user}/>} />
           <Route path="/score-status" element={<ScoreStatus offices={offices}/>} />
           <Route path="/classroom" element={<Classroom {...{meta,setMeta,setStudents,importExcel,importBulkExcel,flash,offices,user,userProfiles,readOnly}} students={classroomStudents} schools={schools} school={school} classroom={classroom} onAddSchool={()=>setSchoolAdding(true)} onAddOffice={addOffice} onDeleteOffice={removeOffice} onSelectSchool={selectSchool} onSelectClass={selectClass} onDeleteSchool={id=>setConfirming({message:'ยืนยันการลบโรงเรียนนี้? ข้อมูลทั้งหมดจะถูกย้ายไปที่ถังขยะและจะไม่แสดงในหน้ารวม',onConfirm:async ()=>{try{setCloudStatus('saving');await deleteSchool(id);setSchools(all=>all.filter(s=>s.id!==id));const next=schools.find(s=>s.id!==id);if(next)selectSchoolAfter(next);else setSchoolId(null);flash('ลบโรงเรียนสำเร็จ (ย้ายไปถังขยะ)');setCloudStatus('saved')}catch(e){console.error(e);setCloudStatus('error');flash('ลบโรงเรียนไม่สำเร็จ')}}})} onDeleteClassroom={id=>setConfirming({title:'ยืนยันการลบชั้นเรียน',message:'คุณแน่ใจหรือไม่ว่าต้องการลบชั้นเรียนนี้? ข้อมูลนักเรียนและผลสอบทั้งหมดในชั้นเรียนนี้จะถูกลบทิ้งถาวร',dangerLabel:'ลบทิ้ง',onConfirm:async()=>{try{setCloudStatus('saving');await deleteClassroom(id);setSchools(all=>all.map(s=>s.id===school.id?{...s,classrooms:s.classrooms.filter(c=>c.id!==id),sessions:s.sessions.filter(x=>x.classId!==id)}:s));const nextClass=school.classrooms.find(c=>c.id!==id);if(nextClass)selectClassNow(nextClass.id);else{navigate('/');selectSchoolNow(school.id);}flash('ลบชั้นเรียนสำเร็จ');setCloudStatus('saved')}catch(e){console.error(e);setCloudStatus('error');flash(`ลบชั้นเรียนไม่สำเร็จ: ${e.message}`)}}})}/>} />
          <Route path="/debug" element={<DebugEvals />} />

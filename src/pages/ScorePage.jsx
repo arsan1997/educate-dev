@@ -74,9 +74,13 @@ const summarizeMissions=rows=>{
   return {missions,totalSeconds,totalScore,time:formatTotalTime(totalSeconds),invalid};
 };
 
-function ScorePage({meta,setMeta,students,update,move,refs,feedback,setFeedback,stats,flash,schools,offices,schoolId,classId,classrooms,onSelectSchool,onSelectClass,sessions,sessionId,onSelectSession,onAddSession,onEditSession,onDeleteSession,onRefreshClassroom,isRefreshingRoom,onPreviewPDF,onPreviewScoreTablePDF,onSave,onResetSession,saveBlocked=false,blockedBy='',retryingSaveLock=false,onRetrySaveLock,onReloadAfterLock,userProfiles,user}){
+function ScorePage({meta,setMeta,students,update,move,refs,feedback,setFeedback,stats,flash,schools,offices,schoolId,classId,classrooms,onSelectSchool,onSelectClass,onSearchStudents,sessions,sessionId,onSelectSession,onAddSession,onEditSession,onDeleteSession,onRefreshClassroom,isRefreshingRoom,onPreviewPDF,onPreviewScoreTablePDF,onSave,onResetSession,saveBlocked=false,blockedBy='',retryingSaveLock=false,onRetrySaveLock,onReloadAfterLock,userProfiles,user}){
   const [search,setSearch]=useState('');
   const [studentRoomSearch,setStudentRoomSearch]=useState('');
+  const [studentRoomMatches,setStudentRoomMatches]=useState([]);
+  const [studentRoomSearchLoading,setStudentRoomSearchLoading]=useState(false);
+  const [studentRoomSearchError,setStudentRoomSearchError]=useState('');
+  const [studentRoomSearchRetry,setStudentRoomSearchRetry]=useState(0);
   const [statusFilter, setStatusFilter]=useState('all');
   const [isSyncing, setIsSyncing]=useState(false);
   const [filterOfficeId, setFilterOfficeId] = useState('');
@@ -91,15 +95,35 @@ function ScorePage({meta,setMeta,students,update,move,refs,feedback,setFeedback,
   
   const set=(k,v)=>setMeta({...meta,[k]:v}),examOptions=examOptionsForRobot(meta.robot),normalizedExam=normalizeExamSet(meta.exam,1,meta.robot);
   const selectedSchoolName=schools.find(item=>String(item.id)===String(schoolId))?.name||'';
-  const studentRoomMatches=useMemo(()=>{
-    const keyword=studentRoomSearch.trim().toLocaleLowerCase();
-    if(!schoolId||keyword.length<2)return [];
-    return classrooms.flatMap(room=>room.students
-      .filter(student=>student.active!==false&&String(student.name||'').toLocaleLowerCase().includes(keyword))
-      .map(student=>({student,classroomId:room.id,classroomName:room.name})))
-      .slice(0,8);
-  },[classrooms,schoolId,studentRoomSearch]);
-  useEffect(()=>setStudentRoomSearch(''),[schoolId,classId]);
+  useEffect(()=>{
+    let active=true;
+    const keyword=studentRoomSearch.trim();
+    if(!schoolId||keyword.length<2){
+      setStudentRoomMatches([]);
+      setStudentRoomSearchError('');
+      setStudentRoomSearchLoading(false);
+      return undefined;
+    }
+    setStudentRoomSearchLoading(true);
+    setStudentRoomSearchError('');
+    const timer=setTimeout(async()=>{
+      try{
+        const rows=await onSearchStudents(schoolId,classrooms.map(room=>room.id),keyword);
+        if(!active)return;
+        const roomNames=new Map(classrooms.map(room=>[String(room.id),room.name]));
+        setStudentRoomMatches((rows||[]).map(student=>({student,classroomId:student.classroomId,classroomName:roomNames.get(String(student.classroomId))||'ไม่ทราบห้อง'})));
+      }catch(error){
+        if(!active)return;
+        console.error(error);
+        setStudentRoomMatches([]);
+        setStudentRoomSearchError('ค้นหานักเรียนไม่สำเร็จ กรุณาลองใหม่');
+      }finally{
+        if(active)setStudentRoomSearchLoading(false);
+      }
+    },250);
+    return()=>{active=false;clearTimeout(timer)};
+  },[classrooms,schoolId,studentRoomSearch,studentRoomSearchRetry,onSearchStudents]);
+  useEffect(()=>{setStudentRoomSearch('');setStudentRoomMatches([]);setStudentRoomSearchError('')},[schoolId,classId]);
   const hasRecordedResult = students.some(s=>s.absent||s.is_special||s.score!==''&&s.score!=null||s.time);
   const sessionMetadataIsBlank=Boolean(sessionId)&&!hasRecordedResult&&!meta.date&&!meta.endDate&&!meta.robot&&!meta.exam&&!meta.teachingPeriod&&!meta.trainer&&!meta.sessionTerm&&!meta.sessionYear&&!feedback?.detail&&!feedback?.summary;
   const shouldPreserveExistingExam=sessionId&&meta.exam&&!examOptions.includes(normalizedExam);
@@ -312,7 +336,7 @@ function ScorePage({meta,setMeta,students,update,move,refs,feedback,setFeedback,
     <Field label="ชั้นเรียน"><Select value={classId} onChange={onSelectClass} disabled={!schoolId}><option value="" disabled hidden>เลือกชั้นเรียน</option>{classrooms.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</Select></Field>
     <Field label="ค้นหานักเรียนในโรงเรียนนี้" wide><div className="student-room-search">
       <div className="student-room-search-input"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input value={studentRoomSearch} onChange={event=>setStudentRoomSearch(event.target.value)} disabled={!schoolId} placeholder={schoolId?'พิมพ์ชื่ออย่างน้อย 2 ตัวอักษร...':'เลือกโรงเรียนก่อนค้นหา'}/>{studentRoomSearch&&<button type="button" onClick={()=>setStudentRoomSearch('')} aria-label="ล้างคำค้นหานักเรียน"><X/></button>}</div>
-      {studentRoomSearch.trim().length>=2&&<div className="student-room-results">{studentRoomMatches.length?studentRoomMatches.map(({student,classroomId,classroomName})=><button type="button" className="student-room-result" key={student.id} onClick={()=>onSelectClass(classroomId)}><b>{student.name}</b><small>{selectedSchoolName} · ชั้น {classroomName} · เลขที่ {student.no}</small></button>):<div className="student-room-empty">ไม่พบนักเรียนที่กำลังเรียนอยู่ในโรงเรียนนี้</div>}</div>}
+      {studentRoomSearch.trim().length>=2&&<div className="student-room-results">{studentRoomSearchLoading?<div className="student-room-empty">กำลังค้นหานักเรียน…</div>:studentRoomSearchError?<div className="student-room-empty">{studentRoomSearchError} <button type="button" className="button" onClick={()=>setStudentRoomSearchRetry(value=>value+1)}>ลองใหม่</button></div>:studentRoomMatches.length?studentRoomMatches.map(({student,classroomId,classroomName})=><button type="button" className="student-room-result" key={student.id} onClick={()=>onSelectClass(classroomId)}><b>{student.name}</b><small>{selectedSchoolName} · ชั้น {classroomName} · เลขที่ {student.no}</small></button>):<div className="student-room-empty">ไม่พบนักเรียนที่กำลังเรียนอยู่ในโรงเรียนนี้</div>}</div>}
     </div></Field>
     <Field label="ครั้งที่ทดสอบ"><div className="session-picker"><Select value={sessionId||''} onChange={onSelectSession} disabled={!classId||editingBlocked}><option value="" disabled hidden>{sessions.length ? 'เลือกครั้งที่ทดสอบ' : 'ยังไม่มีข้อมูล (กดปุ่ม + ด้านขวา)'}</option>{sessions.map(s=><option value={s.id} key={s.id}>{sessionOptionLabel(s)}</option>)}</Select><button type="button" onClick={onAddSession} disabled={!classId||editingBlocked} title="เพิ่มครั้งทดสอบ"><Plus/></button>{sessionId&&<button type="button" onClick={()=>onEditSession(sessionId)} disabled={!classId||editingBlocked} title="แก้ไขเลขครั้งทดสอบ"><Edit2 size={20}/></button>}{sessions.length>1&&<button type="button" onClick={()=>onDeleteSession(sessionId)} disabled={editingBlocked} title="ลบครั้งทดสอบ" className="danger-text"><Trash2 size={20}/></button>}</div></Field>
    {duplicateSessionGroups.length>0&&<div style={{gridColumn:'1 / -1',padding:'10px 14px',border:'1px solid #f59e0b',borderRadius:'8px',background:'rgba(245,158,11,.10)',color:'#92400e',fontSize:'13px'}}><b>พบเลขครั้งซ้ำ:</b> {duplicateSessionGroups.map(group=>`ครั้งที่ ${sessionNumber(group[0].test)} (${group.length} รายการ)`).join(', ')} กรุณาเลือกจากรายละเอียดในรายการ แล้วกดปุ่มดินสอเพื่อแก้ให้ไม่ซ้ำ ระบบจะไม่ลบคะแนนเดิม</div>}

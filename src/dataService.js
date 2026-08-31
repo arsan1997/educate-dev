@@ -278,6 +278,27 @@ export async function searchStudentScores(searchTerm) {
   return data;
 }
 
+export async function searchSchoolStudents(schoolId, classroomIds, searchTerm) {
+  const keyword = String(searchTerm || '').trim();
+  const ids = [...new Set((classroomIds || []).map(id => String(id)).filter(Boolean))];
+  if (!schoolId || keyword.length < 2 || !ids.length) return [];
+  const { data, error } = await supabase
+    .from('students')
+    .select('id,classroom_id,student_no,full_name,active')
+    .in('classroom_id', ids)
+    .eq('active', true)
+    .ilike('full_name', `%${keyword}%`)
+    .order('student_no')
+    .limit(20);
+  if (error) throw error;
+  return (data || []).map(student => ({
+    id: student.id,
+    classroomId: student.classroom_id,
+    no: student.student_no,
+    name: student.full_name
+  }));
+}
+
 export async function saveTeacherRequests(configs, schoolId, isEdit=false) {
   if (isEdit) {
     await supabase.from('teacher_requests').delete().eq('school_id', schoolId).eq('status', 'pending');
