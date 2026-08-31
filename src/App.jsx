@@ -223,21 +223,6 @@ function App({user,profile,onSignOut}){
     cloudReady.current=true;setCloudStatus(detailError.code==='42P01'?'setup':'error');
    }
   }catch(e){console.error('Initial data load failed',e);cloudReady.current=true;setCloudStatus(e.code==='42P01'?'setup':'error')}})();return()=>{active=false}},[user.id]);
-  useEffect(()=>{
-    loadOffices().then(setOffices).catch(console.error);
-
-    // One-time fix for corrupted evaluations with null school_id
-    supabase.from('onsite_evaluations').select('id, classroom_id').is('school_id', null).then(({data}) => {
-      if (data && data.length > 0) {
-        data.forEach(async (row) => {
-          const { data: cls } = await supabase.from('classrooms').select('school_id').eq('id', row.classroom_id).single();
-          if (cls && cls.school_id) {
-            await supabase.from('onsite_evaluations').update({ school_id: cls.school_id }).eq('id', row.id);
-          }
-        });
-      }
-    });
-  },[]);
   useEffect(()=>{if(!cloudReady.current||readOnly||!hasDirty())return;setCloudStatus('saving');const timer=setTimeout(()=>flushChanges().catch(console.error),900);return()=>clearTimeout(timer)},[schools,user.id,readOnly]);
   useEffect(()=>()=>{if(lockRetryTimer.current)clearTimeout(lockRetryTimer.current)},[]);
   useEffect(()=>{if(cloudStatus!=='saving')return;const warn=e=>{e.preventDefault();e.returnValue=''};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn)},[cloudStatus]);
