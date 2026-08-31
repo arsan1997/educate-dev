@@ -101,6 +101,14 @@ function App({user,profile,onSignOut}){
   const scoreMeta={school:scoreSchool?.name||'',year:scoreSchool?.year||'',term:scoreSchool?.term||'',officeId:scoreSchool?.officeId||'',level:scoreClassroom?.name||'',test:scoreSession?.test||'',date:scoreSession?.date||'',endDate:scoreSession?.endDate||'',robot:scoreSession?.robot||'',exam:scoreSession?.exam||'',teachingPeriod:scoreSession?.teachingPeriod||'',trainer:scoreSession?.trainer||'',sessionTerm:scoreSession?.term||'',sessionYear:scoreSession?.year||''};
   const scoreFeedback=scoreSession?.feedback||{detail:'',summary:''};
   const scoreStats=useMemo(()=>calcStats(scoreStudents),[scoreStudents]);
+  useEffect(()=>{
+    const blurNumberInputOnWheel=event=>{
+      const target=event.target;
+      if(target instanceof HTMLInputElement&&target.type==='number')target.blur();
+    };
+    document.addEventListener('wheel',blurNumberInputOnWheel,{capture:true});
+    return()=>document.removeEventListener('wheel',blurNumberInputOnWheel,{capture:true});
+  },[]);
   const dashboardRows=(school?.classrooms||[]).map(c=>{
     const latest=school.sessions.filter(s=>s.classId===c.id).at(-1),
     merged=c.students.filter(st=>st.active!==false||latest?.entries?.[st.id]).map(st=>({...st,...(latest?.entries?.[st.id]||{})})),

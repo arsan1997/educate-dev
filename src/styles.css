@@ -154,7 +154,7 @@ td.number{font-family:'DM Sans';color:var(--muted);font-size:11px}
 .check:checked{background:var(--danger);border-color:var(--danger);position:relative}
 .check:checked:after{content:'✓';color:white;position:absolute;inset:-2px 2px;font-size:13px}
 .score-input,.time-input{width:82px;height:34px;border:1px solid var(--line);border-radius:6px;background:var(--panel);text-align:center;outline:none;font-family:'DM Sans';color:var(--text)}
-.score-input{-moz-appearance:textfield;appearance:textfield}.score-input::-webkit-outer-spin-button,.score-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+input[type=number]{-moz-appearance:textfield;appearance:textfield}input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .time-input{width:94px}
 .absent{background:color-mix(in srgb,var(--soft) 65%,transparent)}
 .absent td b{color:var(--muted);text-decoration:line-through}
