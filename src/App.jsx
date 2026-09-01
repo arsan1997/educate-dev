@@ -995,7 +995,7 @@ function App({user,profile,onSignOut}){
     return sessionHasRecordedResult(session)?session:null;
    };
    const examName=sess=>sess?.exam||defaultExamForRobot(sess?.robot);
-   const compactExam=sess=>examName(sess).replace(/\s+(?=\d)/g,'');
+   const compactExam=sess=>examName(sess).replace(/\s+(?=\d)/g,' ');
   const sessionStats=(classroom,sess)=>{
    if(!sess)return {avg:0,rate:0,absent:0,below:0,assessment:'ไม่ผ่าน'};
    const entries=sess.entries||{};
