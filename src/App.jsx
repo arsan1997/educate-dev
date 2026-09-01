@@ -1312,7 +1312,7 @@ function App({user,profile,onSignOut}){
    const sess=sessionFor(c),entries=sess.entries||{};
    const eligibleStudents=c.students.filter(st=>st.active!==false||entries[st.id]);
    const absent=eligibleStudents.filter(st=>entries[st.id]?.absent).length;
-   const examName=reportExam(sess).replace(/\s+(?=\d)/g,'');
+   const examName=reportExam(sess).replace(/\s+(?=\d)/g,' ');
    return [c.name,eligibleStudents.length,absent,sess.robot||'Code & Go',sess.teachingPeriod||'-',term,examName,sess.trainer||'-'];
   });
   const detailColumnWidths=[22,16,16,25,19,13,26,38.9];
