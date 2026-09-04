@@ -1,5 +1,5 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {Sun, Moon, LayoutDashboard, Users, ClipboardPenLine, FileText, Upload, Plus, Save, Download, ChevronDown, ChevronLeft, School, Bot, CheckCircle2, AlertCircle, X, LogOut, Cloud, CloudOff, Edit2, ShieldCheck, Clock3, Eye, UserMinus, RotateCcw} from 'lucide-react';
+import {Sun, Moon, LayoutDashboard, Users, ClipboardPenLine, FileText, Upload, Plus, Save, Download, ChevronDown, ChevronLeft, School, Bot, CheckCircle2, AlertCircle, X, LogOut, Cloud, CloudOff, Edit2, ShieldCheck, Clock3, Eye, UserMinus, RotateCcw, Trash2} from 'lucide-react';
 import {sampleSchool,parseSchoolWorkbook,calcStats,calcRanks,ROBOT_TYPES} from '../../model';
 import {supabase,isSupabaseConfigured} from '../../supabase';
 import {loadSchoolIndex,loadSchoolDetail,loadDashboardInsights,saveSchoolMeta,saveSessionRows,saveClassroomStudents,saveResultRows,saveSchoolBundle,deleteSchool,loadCurrentProfile,loadAccessAdmin,updateUserAccess,saveStudentOrder,loadOffices,createOffice} from '../../dataService';
@@ -26,7 +26,7 @@ const initialStudentRow = (student, nextNo) => {
   };
 };
 
-function AddStudentModal({onClose,onAdd,nextNo,student,isEdit}){
+function AddStudentModal({onClose,onAdd,onDelete,nextNo,student,isEdit}){
   const [list, setList] = useState([initialStudentRow(student, nextNo)]);
   
   const valid = list.every(item => item.firstName.trim() && item.lastName.trim() && (!isEdit||Number(item.no)>0));
@@ -88,6 +88,7 @@ function AddStudentModal({onClose,onAdd,nextNo,student,isEdit}){
         )}
       </div>
       <div className="modal-actions">
+        {isEdit && <button type="button" className="button danger-text" onClick={()=>onDelete?.(student)}><Trash2/>ลบนักเรียน</button>}
         <button type="button" className="button" onClick={onClose}>ยกเลิก</button>
         <button className="primary" disabled={!valid}><Save/>{isEdit?'บันทึกการแก้ไข':'เพิ่มนักเรียนทั้งหมด'}</button>
       </div>

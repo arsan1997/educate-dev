@@ -9,7 +9,7 @@ import Select from '../components/ui/Select';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import AddStudentModal from '../components/modals/AddStudentModal';
 
-function Classroom({meta,setMeta,students,setStudents,importExcel,importBulkExcel,flash,offices,schools,school,classroom,onAddSchool,onAddOffice,onDeleteOffice,onSelectSchool,onSelectClass,onDeleteSchool,onDeleteClassroom,user,userProfiles,readOnly=false}){
+function Classroom({meta,setMeta,students,setStudents,importExcel,importBulkExcel,flash,offices,schools,school,classroom,onAddSchool,onAddOffice,onDeleteOffice,onSelectSchool,onSelectClass,onDeleteStudent,onDeleteSchool,onDeleteClassroom,user,userProfiles,readOnly=false}){
   const [adding,setAdding]=useState(false);
   const [addingOffice,setAddingOffice]=useState(false),[newOffice,setNewOffice]=useState('');
   const [editingStudent, setEditingStudent] = useState(null);
@@ -86,6 +86,15 @@ function Classroom({meta,setMeta,students,setStudents,importExcel,importBulkExce
     });
   };
   const restoreStudent=id=>{setStudents(students.map(s=>s.id===id?{...s,active:true,leftAt:''}:s));flash('กู้คืนนักเรียนกลับเข้าชั้นเรียนแล้ว')};
+  const requestDeleteStudent=student=>{
+    setEditingStudent(null);
+    setConfirming({
+      title:'ยืนยันการลบนักเรียนถาวร',
+      message:`คุณแน่ใจหรือไม่ว่าต้องการลบ "${student.name}" ออกจากห้องเรียน?\nข้อมูลคะแนนและผลสอบทั้งหมดของนักเรียนคนนี้จะถูกลบถาวรและกู้คืนไม่ได้`,
+      dangerLabel:'ลบถาวร',
+      onConfirm:()=>onDeleteStudent?.(student)
+    });
+  };
 
   if(!school)return <div className="page-title classroom-page-title"><div><span className="eyebrow">ข้อมูลพื้นฐาน</span><h1>จัดการโรงเรียนและชั้นเรียน</h1><p>ยังไม่มีข้อมูลโรงเรียน โปรดเพิ่มหรือนำเข้าไฟล์ Excel</p></div><div className="page-buttons classroom-page-actions"><a href="/template.xlsx" download className="button"><Download/>โหลดแบบฟอร์ม</a><button className="button" onClick={onAddSchool}><Plus/>เพิ่มโรงเรียน</button><div className="classroom-import-actions"><label className="primary"><Upload/>นำเข้า 1 โรงเรียน<input type="file" accept=".xlsx,.xls" onChange={importExcel} hidden/></label><label className="primary outline" title="นำเข้าข้อมูลหลายโรงเรียนพร้อมกัน (ไม่มี Popup ให้กดยืนยัน)"><Upload/>นำเข้ารวดเดียว (Bulk)<input type="file" multiple accept=".xlsx,.xls" onChange={importBulkExcel} hidden/></label></div></div></div>;
   return <>
@@ -149,7 +158,7 @@ function Classroom({meta,setMeta,students,setStudents,importExcel,importBulkExce
     </div>
   <div className="table-wrap classroom-table-wrap"><table className="responsive-card-table classroom-student-table"><thead><tr><th>เลขที่</th><th>ชื่อ–นามสกุล</th><th>สถานะ</th><th className="center">จัดการ</th></tr></thead><tbody>{filteredStudents.map(s=><tr key={s.id} className={s.active===false?'student-inactive':''}><td data-label="เลขที่" className="number">{String(s.no).padStart(2,'0')}</td><td data-label="ชื่อ–นามสกุล"><b>{s.name}</b></td><td data-label="สถานะ"><span className={`student-status ${s.active===false?'left':'active'}`}>{s.active===false?`ออกแล้ว${s.leftAt?` · ${s.leftAt}`:''}`:'กำลังเรียน'}</span></td><td data-label="จัดการ" className="center"><div className="student-actions"><button disabled={editingBlocked} className="icon-btn" title="แก้ไขข้อมูลหรือสลับเลขที่" onClick={()=>setEditingStudent(s)}><Edit2 size={16}/></button>{s.active===false?<button disabled={editingBlocked} className="icon-btn restore" title="กู้คืน" onClick={()=>restoreStudent(s.id)}><RotateCcw size={16}/></button>:<button disabled={editingBlocked} className="icon-btn danger-text" title="ออกจากชั้นเรียน" onClick={()=>leaveStudent(s)}><UserMinus size={16}/></button>}</div></td></tr>)}</tbody></table></div></div>
   {adding && <AddStudentModal onClose={()=>setAdding(false)} onAdd={addStudents} nextNo={students.length+1}/>}
-  {editingStudent && <AddStudentModal onClose={()=>setEditingStudent(null)} onAdd={data=>updateStudent(data[0])} student={editingStudent} isEdit={true}/>}
+  {editingStudent && <AddStudentModal onClose={()=>setEditingStudent(null)} onAdd={data=>updateStudent(data[0])} onDelete={requestDeleteStudent} student={editingStudent} isEdit={true}/>}
   {confirming && <ConfirmModal {...confirming} onClose={()=>setConfirming(null)}/>} 
   </>
 }

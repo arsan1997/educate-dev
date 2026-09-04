@@ -888,6 +888,10 @@ export async function saveClassroomStudents(classId, students) {
   must(await supabase.from('students').upsert(rows));
 }
 
+export async function deleteStudent(studentId) {
+  must(await supabase.from('students').delete().eq('id', String(studentId)));
+}
+
 export async function saveSessionRows(sessions) {
   const validSessions=(sessions||[]).filter(session=>session?.id);
   if (!validSessions.length) return;

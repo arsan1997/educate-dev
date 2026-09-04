@@ -4,7 +4,7 @@ import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-
 import {Sun, Moon, LayoutDashboard, Users, ClipboardPenLine, ClipboardCheck, FileText, Upload, Plus, Save, Download, ChevronDown, ChevronLeft, School, Bot, CheckCircle2, AlertCircle, X, LogOut, Cloud, CloudOff, Edit2, ShieldCheck, Clock3, Eye, UserMinus, RotateCcw, FileCog, Trash2, MapPin, Warehouse} from 'lucide-react';
 import {sampleSchool,parseSchoolWorkbook,calcStats,calcRanks,ROBOT_TYPES,compareClassNames,defaultExamForRobot,examOptionsForRobot} from './model';
 import {supabase,isSupabaseConfigured} from './supabase';
-import {loadSchoolIndex,loadSchoolDetail,loadClassroomDetail,loadDashboardInsights,saveSchoolMeta,saveSessionRows,saveClassroomStudents,saveClassroomMeta,saveResultRows,saveSchoolBundle,deleteSchool,loadCurrentProfile,loadAccessAdmin,updateUserAccess,saveStudentOrder,loadOffices,createOffice,deleteOffice,loadAllProfiles,saveSchools,deleteClassroom,deleteSession,acquireLock,verifyLockOwnership,searchSchoolStudents} from './dataService';
+import {loadSchoolIndex,loadSchoolDetail,loadClassroomDetail,loadDashboardInsights,saveSchoolMeta,saveSessionRows,saveClassroomStudents,saveClassroomMeta,saveResultRows,saveSchoolBundle,deleteSchool,deleteStudent,loadCurrentProfile,loadAccessAdmin,updateUserAccess,saveStudentOrder,loadOffices,createOffice,deleteOffice,loadAllProfiles,saveSchools,deleteClassroom,deleteSession,acquireLock,verifyLockOwnership,searchSchoolStudents} from './dataService';
 import brandLogo from './assets/logo.png';
 import './styles.css';
 import './dynamic.css';
@@ -515,6 +515,31 @@ function App({user,profile,onSignOut}){
     flash('รีเซตข้อมูลครั้งนี้แล้ว กำลังบันทึกอัตโนมัติ');
   };
   const setStudents=nextOrFn=>{if(!classroom||!session)return;const next=typeof nextOrFn==='function'?nextOrFn(classroomStudents):nextOrFn;markClassroom(classroom.id);next.forEach(st=>markResult(session.id,st.id));mutateSchool(s=>({...s,classrooms:s.classrooms.map(c=>c.id===classroom.id?{...c,students:next.map(({score,time,absent,updatedBy,...student})=>student)}:c),sessions:s.sessions.map(x=>x.id===session.id?{...x,entries:Object.fromEntries(next.map(st=>[st.id,{score:st.score,time:st.time,absent:st.absent,updatedBy:st.updatedBy}]))}:x)}))};
+  const removeStudent=async student=>{
+    if(!classroom||!student?.id)return;
+    const studentId=String(student.id);
+    try{
+      setCloudStatus('saving');
+      await deleteStudent(student.id);
+      dirtyRef.current.results.forEach(ids=>{
+        ids.delete(student.id);
+        ids.delete(studentId);
+      });
+      for(const [sessionKey,ids] of dirtyRef.current.results){
+        if(!ids.size)dirtyRef.current.results.delete(sessionKey);
+      }
+      setSchools(all=>all.map(s=>({...s,
+        classrooms:s.classrooms.map(c=>c.id===classroom.id?{...c,students:c.students.filter(st=>String(st.id)!==studentId)}:c),
+        sessions:s.sessions.map(x=>x.classId===classroom.id?{...x,entries:Object.fromEntries(Object.entries(x.entries||{}).filter(([id])=>String(id)!==studentId))}:x)
+      })));
+      flash(`ลบนักเรียน ${student.name} และผลสอบที่เกี่ยวข้องถาวรแล้ว`);
+      setCloudStatus(hasDirty()?'saving':'saved');
+    }catch(error){
+      console.error(error);
+      setCloudStatus('error');
+      flash(`ลบนักเรียนไม่สำเร็จ: ${error.message}`);
+    }
+  };
   const move=(i,key,e)=>{if(['Enter','ArrowDown'].includes(e.key)){e.preventDefault();refs.current[`${i+1}-${key}`]?.focus()}};
   const importExcel=e=>{const f=e.target.files[0];e.target.value='';if(!f)return;const r=new FileReader();r.onload=async ev=>{try{
    flash('กำลังอ่านไฟล์ Excel...');
@@ -1580,7 +1605,7 @@ function App({user,profile,onSignOut}){
          <Route path="/stock" element={<StockPage schools={schools} offices={offices} user={user} profile={profile} flash={flash}/>} />
            <Route path="/scores" element={<ScorePage meta={scoreMeta} setMeta={setMeta} students={scoreStudents} update={update} move={move} refs={refs} feedback={scoreFeedback} setFeedback={setFeedback} stats={scoreStats} flash={flash} schools={schools} offices={offices} schoolId={schoolId||''} classId={classId||''} classrooms={scoreSchool?.classrooms||[]} onSelectSchool={selectSchool} onSelectClass={selectClass} onSearchStudents={searchStudentsInSchool} sessions={scoreClassSessions} sessionId={scoreSession?.id} onSelectSession={id=>guardNavigation(()=>setSessionId(id))} onAddSession={addSession} onEditSession={editSession} onDeleteSession={removeSession} onRefreshClassroom={refreshClassroom} isRefreshingRoom={roomRefreshing} onPreviewPDF={openPDFPreview} onPreviewScoreTablePDF={openScoreTablePDFPreview} onSave={flushChanges} onResetSession={resetCurrentSession} saveBlocked={scoreEntryBlocked} blockedBy={scoreSaveBlocked?.lockedBy||''} retryingSaveLock={retryingScoreLock} onRetrySaveLock={retryScoreSaveLock} onReloadAfterLock={()=>window.location.reload()} userProfiles={userProfiles} user={user}/>} />
           <Route path="/score-status" element={<ScoreStatus offices={offices}/>} />
-          <Route path="/classroom" element={<Classroom {...{meta,setMeta,setStudents,importExcel,importBulkExcel,flash,offices,user,userProfiles,readOnly}} students={classroomStudents} schools={schools} school={school} classroom={classroom} onAddSchool={()=>setSchoolAdding(true)} onAddOffice={addOffice} onDeleteOffice={removeOffice} onSelectSchool={selectSchool} onSelectClass={selectClass} onDeleteSchool={id=>setConfirming({message:'ยืนยันการลบโรงเรียนนี้? ข้อมูลทั้งหมดจะถูกย้ายไปที่ถังขยะและจะไม่แสดงในหน้ารวม',onConfirm:async ()=>{try{setCloudStatus('saving');await deleteSchool(id);setSchools(all=>all.filter(s=>s.id!==id));const next=schools.find(s=>s.id!==id);if(next)selectSchoolAfter(next);else setSchoolId(null);flash('ลบโรงเรียนสำเร็จ (ย้ายไปถังขยะ)');setCloudStatus('saved')}catch(e){console.error(e);setCloudStatus('error');flash('ลบโรงเรียนไม่สำเร็จ')}}})} onDeleteClassroom={id=>setConfirming({title:'ยืนยันการลบชั้นเรียน',message:'คุณแน่ใจหรือไม่ว่าต้องการลบชั้นเรียนนี้? ข้อมูลนักเรียนและผลสอบทั้งหมดในชั้นเรียนนี้จะถูกลบทิ้งถาวร',dangerLabel:'ลบทิ้ง',onConfirm:async()=>{try{setCloudStatus('saving');await deleteClassroom(id);setSchools(all=>all.map(s=>s.id===school.id?{...s,classrooms:s.classrooms.filter(c=>c.id!==id),sessions:s.sessions.filter(x=>x.classId!==id)}:s));const nextClass=school.classrooms.find(c=>c.id!==id);if(nextClass)selectClassNow(nextClass.id);else{navigate('/');selectSchoolNow(school.id);}flash('ลบชั้นเรียนสำเร็จ');setCloudStatus('saved')}catch(e){console.error(e);setCloudStatus('error');flash(`ลบชั้นเรียนไม่สำเร็จ: ${e.message}`)}}})}/>} />
+          <Route path="/classroom" element={<Classroom {...{meta,setMeta,setStudents,importExcel,importBulkExcel,flash,offices,user,userProfiles,readOnly}} students={classroomStudents} schools={schools} school={school} classroom={classroom} onAddSchool={()=>setSchoolAdding(true)} onAddOffice={addOffice} onDeleteOffice={removeOffice} onSelectSchool={selectSchool} onSelectClass={selectClass} onDeleteStudent={removeStudent} onDeleteSchool={id=>setConfirming({message:'ยืนยันการลบโรงเรียนนี้? ข้อมูลทั้งหมดจะถูกย้ายไปที่ถังขยะและจะไม่แสดงในหน้ารวม',onConfirm:async ()=>{try{setCloudStatus('saving');await deleteSchool(id);setSchools(all=>all.filter(s=>s.id!==id));const next=schools.find(s=>s.id!==id);if(next)selectSchoolAfter(next);else setSchoolId(null);flash('ลบโรงเรียนสำเร็จ (ย้ายไปถังขยะ)');setCloudStatus('saved')}catch(e){console.error(e);setCloudStatus('error');flash('ลบโรงเรียนไม่สำเร็จ')}}})} onDeleteClassroom={id=>setConfirming({title:'ยืนยันการลบชั้นเรียน',message:'คุณแน่ใจหรือไม่ว่าต้องการลบชั้นเรียนนี้? ข้อมูลนักเรียนและผลสอบทั้งหมดในชั้นเรียนนี้จะถูกลบทิ้งถาวร',dangerLabel:'ลบทิ้ง',onConfirm:async()=>{try{setCloudStatus('saving');await deleteClassroom(id);setSchools(all=>all.map(s=>s.id===school.id?{...s,classrooms:s.classrooms.filter(c=>c.id!==id),sessions:s.sessions.filter(x=>x.classId!==id)}:s));const nextClass=school.classrooms.find(c=>c.id!==id);if(nextClass)selectClassNow(nextClass.id);else{navigate('/');selectSchoolNow(school.id);}flash('ลบชั้นเรียนสำเร็จ');setCloudStatus('saved')}catch(e){console.error(e);setCloudStatus('error');flash(`ลบชั้นเรียนไม่สำเร็จ: ${e.message}`)}}})}/>} />
          <Route path="/debug" element={<DebugEvals />} />
           <Route path="/reports" element={<Reports {...{stats,exportExcel,exportAllExcelZip,exportPDF,exportScoreTablePDF}} onPreviewPDF={openPDFPreview} onPreviewScoreTablePDF={openScoreTablePDFPreview} schools={schools} schoolId={school?.id||''} onSelectSchool={selectSchool}/>} />
          <Route path="/dataprep" element={<DataPrep />} />
