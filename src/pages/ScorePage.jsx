@@ -74,7 +74,7 @@ const summarizeMissions=rows=>{
   return {missions,totalSeconds,totalScore,time:formatTotalTime(totalSeconds),invalid};
 };
 
-function ScorePage({meta,setMeta,students,update,move,refs,feedback,setFeedback,stats,flash,schools,offices,schoolId,classId,classrooms,onSelectSchool,onSelectClass,onSearchStudents,sessions,sessionId,onSelectSession,onAddSession,onEditSession,onDeleteSession,onRefreshClassroom,isRefreshingRoom,onPreviewPDF,onPreviewScoreTablePDF,onSave,onResetSession,saveBlocked=false,blockedBy='',retryingSaveLock=false,onRetrySaveLock,onReloadAfterLock,userProfiles,user}){
+function ScorePage({meta,setMeta,students,update,move,refs,feedback,setFeedback,stats,flash,schools,offices,schoolId,classId,classrooms,onSelectSchool,onSelectClass,onSearchStudents,sessions,sessionId,onSelectSession,onAddSession,onEditSession,onDeleteSession,onRefreshClassroom,isRefreshingRoom,onOpenReportPDF,onPreviewScoreTablePDF,onSave,onResetSession,saveBlocked=false,blockedBy='',retryingSaveLock=false,onRetrySaveLock,onReloadAfterLock,userProfiles,user}){
   const [search,setSearch]=useState('');
   const [studentRoomSearch,setStudentRoomSearch]=useState('');
   const [studentRoomMatches,setStudentRoomMatches]=useState([]);
@@ -321,7 +321,7 @@ function ScorePage({meta,setMeta,students,update,move,refs,feedback,setFeedback,
     <div className="page-title-actions">
        {!editingBlocked && <span className="status" style={{marginRight:'10px'}}><i/> บันทึกอัตโนมัติทุก 5 วิ</span>}
        <button type="button" className="button" onClick={onRefreshClassroom} disabled={isRefreshingRoom||!classId||editingBlocked} title="รีโหลดชุดทดสอบและคะแนนของห้องนี้">{isRefreshingRoom?<Loader2 className="spin"/>:<RotateCcw/>}รีโหลดห้อง</button>
-      <button type="button" className="button" onClick={onPreviewPDF}><Eye/>ดูตัวอย่าง PDF</button>
+       <button type="button" className="button" onClick={onOpenReportPDF}><Eye/>รายงานสรุป PDF</button>
       <button type="button" className="button" onClick={onPreviewScoreTablePDF}><FileText/>PDF ตารางคะแนน</button>
        <button type="button" className="primary" disabled={editingBlocked} onClick={async ()=>{if(editingBlocked)return;flash('กำลังบันทึกข้อมูล...');try{await onSave();flash('บันทึกข้อมูลเรียบร้อยแล้ว')}catch(e){flash('บันทึกไม่สำเร็จ')}}}><Save/>บันทึกเดี๋ยวนี้</button>
     </div>

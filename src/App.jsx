@@ -13,6 +13,7 @@ import ConfirmModal from './components/ui/ConfirmModal';
 import AddSchoolModal from './components/modals/AddSchoolModal';
 import ImportOfficeModal from './components/modals/ImportOfficeModal';
 import PDFPreviewModal from './components/ui/PDFPreviewModal';
+import ReportPDFModal from './components/ui/ReportPDFModal';
 import Select from './components/ui/Select';
 import Field from './components/ui/Field';
 import './index.css';
@@ -86,7 +87,7 @@ function App({user,profile,onSignOut}){
   const [offices,setOffices]=useState([]);
   const [userProfiles,setUserProfiles]=useState({});
   const [schoolId,setSchoolId]=useState(''),[classId,setClassId]=useState(''),[sessionId,setSessionId]=useState('');
-  const [confirming,setConfirming]=useState(null),[schoolAdding,setSchoolAdding]=useState(false),[pendingImport,setPendingImport]=useState(null),[pdfPreview,setPdfPreview]=useState(null),[pdfEditor,setPdfEditor]=useState(null),[scoreSaveBlocked,setScoreSaveBlocked]=useState(null),[retryingScoreLock,setRetryingScoreLock]=useState(false);
+  const [confirming,setConfirming]=useState(null),[schoolAdding,setSchoolAdding]=useState(false),[pendingImport,setPendingImport]=useState(null),[pdfPreview,setPdfPreview]=useState(null),[pdfEditor,setPdfEditor]=useState(null),[reportPDFSelection,setReportPDFSelection]=useState(null),[scoreSaveBlocked,setScoreSaveBlocked]=useState(null),[retryingScoreLock,setRetryingScoreLock]=useState(false);
   const pdfSettings={scale:1};
   const isSuperOwner = user.email === 'arsan113@gmail.com';
   const tabs=baseTabs;
@@ -1189,7 +1190,8 @@ function App({user,profile,onSignOut}){
 
  const exportPDF=async(mode='download',overrides={})=>{
   if(readOnly){flash('บัญชีดูอย่างเดียวไม่สามารถสร้าง PDF ได้');return}
-  if(!school)return;
+  const reportSchool=overrides.school||school;
+  if(!reportSchool)return;
   flash('กำลังเตรียมไฟล์ PDF...');
   const [pdfModule,autoTableModule,{logoBase64},{fontBase64}]=await Promise.all([
    import('jspdf'),
@@ -1253,12 +1255,20 @@ function App({user,profile,onSignOut}){
    img.onerror=()=>resolve(null);img.src=src;
   });
 
-  const rawSchoolName=String(overrides.schoolName??school.name??'').trim();
-  const term=String(overrides.term??school.term??'2').trim()||'2';
-  const year=String(overrides.year??school.year??'2568').trim()||'2568';
-  const displaySchoolName=rawSchoolName.replace(/^โรงเรียน\s*/,'').trim();
-  const fileSchoolName=/^โรงเรียน/.test(rawSchoolName)?rawSchoolName:`โรงเรียน${rawSchoolName}`;
-  const testNumber=(session?.test||'').match(/\d+/)?.[0]||'1';
+   const rawSchoolName=String(overrides.schoolName??reportSchool.name??'').trim();
+   const term=String(overrides.term??reportSchool.term??'2').trim()||'2';
+   const year=String(overrides.year??reportSchool.year??'2568').trim()||'2568';
+   const displaySchoolName=rawSchoolName.replace(/^โรงเรียน\s*/,'').trim();
+   const fileSchoolName=/^โรงเรียน/.test(rawSchoolName)?rawSchoolName:`โรงเรียน${rawSchoolName}`;
+   const selectedTestNumber=Number(overrides.testNumber)||sessionTestNumber(session?.test)||1;
+   const testNumber=String(selectedTestNumber);
+   const reportClassrooms=overrides.scope==='classroom'
+    ?reportSchool.classrooms.filter(item=>String(item.id)===String(overrides.classroomId))
+    :reportSchool.classrooms;
+   const selectedSession=reportSchool.sessions.find(item=>String(item.id)===String(overrides.sessionId)&&sessionTestNumber(item.test)===selectedTestNumber)
+    ||reportSchool.sessions.find(item=>String(item.classId)===String(overrides.classroomId)&&sessionTestNumber(item.test)===selectedTestNumber)
+    ||reportSchool.sessions.find(item=>sessionTestNumber(item.test)===selectedTestNumber)
+    ||null;
   const thaiWordSegmenter=typeof Intl!=='undefined'&&Intl.Segmenter?new Intl.Segmenter('th',{granularity:'word'}):null;
   const graphemeSegmenter=typeof Intl!=='undefined'&&Intl.Segmenter?new Intl.Segmenter('th',{granularity:'grapheme'}):null;
   const wrapPdfText=(value,maxWidth,fontSize,fontStyle='normal')=>{
@@ -1321,7 +1331,7 @@ function App({user,profile,onSignOut}){
    const t2 = y2&&m2&&d2?`${d2}/${m2}/${y2+543}`:'-';
    return `${t1} - ${t2}`;
   };
-  const sessionFor=c=>school.sessions.find(s=>s.classId===c.id&&s.test===session?.test)||school.sessions.filter(s=>s.classId===c.id).at(-1)||{};
+   const sessionFor=c=>reportSchool.sessions.find(item=>String(item.classId)===String(c.id)&&sessionTestNumber(item.test)===selectedTestNumber)||null;
   const reportExam=s=>s?.exam||defaultExamForRobot(s?.robot);
 
   // ตำแหน่งและสัดส่วนอ้างอิงจากไฟล์ตัวอย่างในโฟลเดอร์ excel
@@ -1338,16 +1348,16 @@ function App({user,profile,onSignOut}){
   if(isVisible('reportTitle'))doc.text('สรุปผลสัมฤทธิ์และข้อเสนอแนะในการเรียนหุ่นยนต์ SCHOOL ROBOTICS',14.8,65.5);
   if(isVisible('termYear'))doc.text(`ประจำปี การศึกษา : ${term}/${year}`,14.8,74);
   doc.setFont('THSarabun','bold');
-  doc.text(`จำนวนห้องเรียน : ${school.classrooms.length} ห้องเรียน`,14.8,82);
-  doc.text(`ครั้งที่  :  ${testNumber}`,14.8,91.5);
-  doc.text(`วันที่ : ${formatThaiDate(session?.date, session?.endDate)}`,14.8,101);
+   doc.text(`จำนวนห้องเรียน : ${reportClassrooms.length} ห้องเรียน`,14.8,82);
+   doc.text(`ครั้งที่  :  ${testNumber}`,14.8,91.5);
+   doc.text(`วันที่ : ${formatThaiDate(selectedSession?.date, selectedSession?.endDate)}`,14.8,101);
 
-  const detailRows=school.classrooms.map(c=>{
-   const sess=sessionFor(c),entries=sess.entries||{};
-   const eligibleStudents=c.students.filter(st=>st.active!==false||entries[st.id]);
-   const absent=eligibleStudents.filter(st=>entries[st.id]?.absent).length;
-   const examName=reportExam(sess).replace(/\s+(?=\d)/g,' ');
-   return [c.name,eligibleStudents.length,absent,sess.robot||'Code & Go',sess.teachingPeriod||'-',term,examName,sess.trainer||'-'];
+   const detailRows=reportClassrooms.map(c=>{
+    const sess=sessionFor(c),entries=sess?.entries||{};
+    const eligibleStudents=c.students.filter(st=>st.active!==false||entries[st.id]);
+    const absent=eligibleStudents.filter(st=>entries[st.id]?.absent).length;
+    const examName=sess?reportExam(sess).replace(/\s+(?=\d)/g,' '):'ยังไม่มีข้อมูลครั้งนี้';
+    return [c.name,sess?eligibleStudents.length:'-',sess?absent:'-',sess?.robot||'-',sess?.teachingPeriod||'-',term,examName,sess?.trainer||'-'];
   });
   const detailColumnWidths=[22,16,16,25,19,13,26,38.9];
   const detailColumnStyles=detailColumnWidths.reduce((styles,width,index)=>{
@@ -1397,7 +1407,7 @@ function App({user,profile,onSignOut}){
   }
 
   const feedbackByClassroom=overrides.feedbackByClassroom||{};
-  const feedbackRows=school.classrooms.flatMap(c=>{
+   const feedbackRows=reportClassrooms.flatMap(c=>{
    const sess=sessionFor(c);
    const defaultText=feedbackTextFromSession(sess);
    const text=Object.prototype.hasOwnProperty.call(feedbackByClassroom,c.id)?String(feedbackByClassroom[c.id]??''):defaultText;
@@ -1529,8 +1539,36 @@ function App({user,profile,onSignOut}){
    anchor.href=url;anchor.download=`${draft.type==='score'?'ตารางคะแนน':'สรุปและข้อเสนอแนะ'} -${fileSchoolName}.docx`;document.body.appendChild(anchor);anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);flash('ส่งออก Word เรียบร้อยแล้ว');
   }catch(error){console.error('Word export failed',error);flash(`ส่งออก Word ไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`);throw error}
  };
- const openPDFPreview=async()=>{try{const preview=await exportPDF('preview');if(preview)setPdfPreview(preview)}catch(error){console.error('PDF preview failed',error);flash(`สร้างตัวอย่าง PDF ไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`)}};
- const openScoreTablePDFPreview=async()=>{try{const preview=await exportScoreTablePDF('preview');if(preview)setPdfPreview(preview)}catch(error){console.error('Score table PDF preview failed',error);flash(`สร้าง PDF ตารางคะแนนไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`)}};
+  const openPDFPreview=async()=>{try{const preview=await exportPDF('preview');if(preview)setPdfPreview(preview)}catch(error){console.error('PDF preview failed',error);flash(`สร้างตัวอย่าง PDF ไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`)}};
+  const openScoreReportSelector=async()=>{
+   if(readOnly){flash('บัญชีดูอย่างเดียวไม่สามารถสร้าง PDF ได้');return}
+   if(!school){flash('กรุณาเลือกโรงเรียนก่อนสร้าง PDF');return}
+   try{
+    let reportSchool=school;
+    if(!reportSchool.loaded){
+     flash('กำลังโหลดข้อมูลทุกห้องสำหรับรายงาน...');
+     reportSchool=await loadSchoolDetail(reportSchool.id);
+     setSchools(current=>current.map(item=>item.id===reportSchool.id?reportSchool:item));
+    }
+    const attempts=Array.from(new Set((reportSchool.sessions||[]).map(item=>sessionTestNumber(item.test)).filter(Boolean)))
+     .sort((a,b)=>a-b)
+     .map(number=>({number,roomCount:reportSchool.classrooms.filter(room=>reportSchool.sessions.some(item=>String(item.classId)===String(room.id)&&sessionTestNumber(item.test)===number)).length}));
+    if(!attempts.length){flash('ยังไม่มีครั้งทดสอบสำหรับสร้างรายงาน PDF');return}
+    const currentNumber=sessionTestNumber(session?.test);
+    const testNumber=attempts.some(item=>item.number===currentNumber)?currentNumber:attempts[0].number;
+    setReportPDFSelection({school:reportSchool,sessionId:session?.id||'',classroomId:classroom?.id||'',classroomName:classroom?.name||'',attempts,totalRooms:reportSchool.classrooms.length,testNumber,scope:'all'});
+   }catch(error){
+    console.error('Report PDF data load failed',error);
+    flash(`โหลดข้อมูลสำหรับรายงานไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`);
+   }
+  };
+  const previewSelectedScoreReport=async selection=>{
+   try{const preview=await exportPDF('preview',selection);if(preview)setPdfPreview(preview)}catch(error){console.error('Selected report PDF preview failed',error);flash(`สร้างตัวอย่าง PDF ไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`)}
+  };
+  const downloadSelectedScoreReport=async selection=>{
+   try{await exportPDF('download',selection)}catch(error){console.error('Selected report PDF download failed',error);flash(`ดาวน์โหลด PDF ไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`);throw error}
+  };
+  const openScoreTablePDFPreview=async()=>{try{const preview=await exportScoreTablePDF('preview');if(preview)setPdfPreview(preview)}catch(error){console.error('Score table PDF preview failed',error);flash(`สร้าง PDF ตารางคะแนนไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`)}};
  useEffect(()=>()=>{if(pdfPreview?.url)URL.revokeObjectURL(pdfPreview.url)},[pdfPreview?.url]);
 
   const removeSchool=async id=>{setConfirming({title:`ยืนยันการลบ ${school.name}`,message:'คุณแน่ใจหรือไม่? ข้อมูลทั้งหมดจะถูกลบทิ้ง',dangerLabel:'ลบโรงเรียน',onConfirm:async()=>{try{await deleteSchool(id);setSchools(all=>all.filter(s=>s.id!==id));setSchool(null);setClassroom(null);setSessionId(null);flash(`ลบโรงเรียน ${school.name} แล้ว`)}catch(e){console.error(e);flash(`ลบไม่สำเร็จ: ${e.message}`)}}})};
@@ -1603,7 +1641,7 @@ function App({user,profile,onSignOut}){
          <Route path="/onsite" element={<OnsiteDashboard flash={flash} offices={offices} />} />
          <Route path="/evaluate" element={<EvaluateForm />} />
          <Route path="/stock" element={<StockPage schools={schools} offices={offices} user={user} profile={profile} flash={flash}/>} />
-           <Route path="/scores" element={<ScorePage meta={scoreMeta} setMeta={setMeta} students={scoreStudents} update={update} move={move} refs={refs} feedback={scoreFeedback} setFeedback={setFeedback} stats={scoreStats} flash={flash} schools={schools} offices={offices} schoolId={schoolId||''} classId={classId||''} classrooms={scoreSchool?.classrooms||[]} onSelectSchool={selectSchool} onSelectClass={selectClass} onSearchStudents={searchStudentsInSchool} sessions={scoreClassSessions} sessionId={scoreSession?.id} onSelectSession={id=>guardNavigation(()=>setSessionId(id))} onAddSession={addSession} onEditSession={editSession} onDeleteSession={removeSession} onRefreshClassroom={refreshClassroom} isRefreshingRoom={roomRefreshing} onPreviewPDF={openPDFPreview} onPreviewScoreTablePDF={openScoreTablePDFPreview} onSave={flushChanges} onResetSession={resetCurrentSession} saveBlocked={scoreEntryBlocked} blockedBy={scoreSaveBlocked?.lockedBy||''} retryingSaveLock={retryingScoreLock} onRetrySaveLock={retryScoreSaveLock} onReloadAfterLock={()=>window.location.reload()} userProfiles={userProfiles} user={user}/>} />
+            <Route path="/scores" element={<ScorePage meta={scoreMeta} setMeta={setMeta} students={scoreStudents} update={update} move={move} refs={refs} feedback={scoreFeedback} setFeedback={setFeedback} stats={scoreStats} flash={flash} schools={schools} offices={offices} schoolId={schoolId||''} classId={classId||''} classrooms={scoreSchool?.classrooms||[]} onSelectSchool={selectSchool} onSelectClass={selectClass} onSearchStudents={searchStudentsInSchool} sessions={scoreClassSessions} sessionId={scoreSession?.id} onSelectSession={id=>guardNavigation(()=>setSessionId(id))} onAddSession={addSession} onEditSession={editSession} onDeleteSession={removeSession} onRefreshClassroom={refreshClassroom} isRefreshingRoom={roomRefreshing} onOpenReportPDF={openScoreReportSelector} onPreviewScoreTablePDF={openScoreTablePDFPreview} onSave={flushChanges} onResetSession={resetCurrentSession} saveBlocked={scoreEntryBlocked} blockedBy={scoreSaveBlocked?.lockedBy||''} retryingSaveLock={retryingScoreLock} onRetrySaveLock={retryScoreSaveLock} onReloadAfterLock={()=>window.location.reload()} userProfiles={userProfiles} user={user}/>} />
           <Route path="/score-status" element={<ScoreStatus offices={offices}/>} />
           <Route path="/classroom" element={<Classroom {...{meta,setMeta,setStudents,importExcel,importBulkExcel,flash,offices,user,userProfiles,readOnly}} students={classroomStudents} schools={schools} school={school} classroom={classroom} onAddSchool={()=>setSchoolAdding(true)} onAddOffice={addOffice} onDeleteOffice={removeOffice} onSelectSchool={selectSchool} onSelectClass={selectClass} onDeleteStudent={removeStudent} onDeleteSchool={id=>setConfirming({message:'ยืนยันการลบโรงเรียนนี้? ข้อมูลทั้งหมดจะถูกย้ายไปที่ถังขยะและจะไม่แสดงในหน้ารวม',onConfirm:async ()=>{try{setCloudStatus('saving');await deleteSchool(id);setSchools(all=>all.filter(s=>s.id!==id));const next=schools.find(s=>s.id!==id);if(next)selectSchoolAfter(next);else setSchoolId(null);flash('ลบโรงเรียนสำเร็จ (ย้ายไปถังขยะ)');setCloudStatus('saved')}catch(e){console.error(e);setCloudStatus('error');flash('ลบโรงเรียนไม่สำเร็จ')}}})} onDeleteClassroom={id=>setConfirming({title:'ยืนยันการลบชั้นเรียน',message:'คุณแน่ใจหรือไม่ว่าต้องการลบชั้นเรียนนี้? ข้อมูลนักเรียนและผลสอบทั้งหมดในชั้นเรียนนี้จะถูกลบทิ้งถาวร',dangerLabel:'ลบทิ้ง',onConfirm:async()=>{try{setCloudStatus('saving');await deleteClassroom(id);setSchools(all=>all.map(s=>s.id===school.id?{...s,classrooms:s.classrooms.filter(c=>c.id!==id),sessions:s.sessions.filter(x=>x.classId!==id)}:s));const nextClass=school.classrooms.find(c=>c.id!==id);if(nextClass)selectClassNow(nextClass.id);else{navigate('/');selectSchoolNow(school.id);}flash('ลบชั้นเรียนสำเร็จ');setCloudStatus('saved')}catch(e){console.error(e);setCloudStatus('error');flash(`ลบชั้นเรียนไม่สำเร็จ: ${e.message}`)}}})}/>} />
          <Route path="/debug" element={<DebugEvals />} />
@@ -1622,8 +1660,9 @@ function App({user,profile,onSignOut}){
   {toast&&<div className="toast"><CheckCircle2/>{toast}</div>}
   {confirming && <ConfirmModal {...confirming} onClose={()=>setConfirming(null)}/>} 
   {schoolAdding && <AddSchoolModal onClose={()=>setSchoolAdding(false)} onAdd={addSchool} offices={offices} onAddOffice={addOffice}/>}
-  {pendingImport&&<ImportOfficeModal school={pendingImport} schools={schools} offices={offices} onAddOffice={addOffice} onClose={()=>setPendingImport(null)} onConfirm={async imported=>{const ready={...imported,loaded:true};try{setCloudStatus('saving');await saveSchoolBundle(ready,user.id);setSchools(v=>v.some(x=>x.id===ready.id)?v.map(x=>x.id===ready.id?ready:x):[...v,ready]);setPendingImport(null);selectSchoolAfter(ready);setCloudStatus('saved');flash(`นำเข้าสำเร็จ: ${ready.classrooms.length} ห้อง`)}catch(error){console.error(error);setCloudStatus('error');flash(`นำเข้าไม่สำเร็จ: ${error.message}`)}}}/>}
-  {pdfPreview&&<PDFPreviewModal preview={pdfPreview} onClose={()=>setPdfPreview(null)}/>}
+   {pendingImport&&<ImportOfficeModal school={pendingImport} schools={schools} offices={offices} onAddOffice={addOffice} onClose={()=>setPendingImport(null)} onConfirm={async imported=>{const ready={...imported,loaded:true};try{setCloudStatus('saving');await saveSchoolBundle(ready,user.id);setSchools(v=>v.some(x=>x.id===ready.id)?v.map(x=>x.id===ready.id?ready:x):[...v,ready]);setPendingImport(null);selectSchoolAfter(ready);setCloudStatus('saved');flash(`นำเข้าสำเร็จ: ${ready.classrooms.length} ห้อง`)}catch(error){console.error(error);setCloudStatus('error');flash(`นำเข้าไม่สำเร็จ: ${error.message}`)}}}/>}
+   {reportPDFSelection&&<ReportPDFModal initialSelection={reportPDFSelection} onClose={()=>setReportPDFSelection(null)} onPreview={async selection=>{await previewSelectedScoreReport(selection);setReportPDFSelection(null)}} onDownload={downloadSelectedScoreReport}/>}
+   {pdfPreview&&<PDFPreviewModal preview={pdfPreview} onClose={()=>setPdfPreview(null)}/>}
  </>
 }
 
