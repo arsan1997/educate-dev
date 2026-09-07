@@ -53,6 +53,9 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'teacher_requests' AND column_name = 'note') THEN
             ALTER TABLE public.teacher_requests ADD COLUMN note text not null default '';
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'teacher_requests' AND column_name = 'test_number') THEN
+            ALTER TABLE public.teacher_requests ADD COLUMN test_number integer not null default 1;
+        END IF;
     END IF;
 END $$;
 
@@ -227,6 +230,7 @@ create table if not exists public.teacher_requests (
   robot_type text not null,
   academic_term text not null,
   teaching_period text not null,
+  test_number integer not null default 1 check (test_number >= 1),
   note text not null default '',
   status text not null default 'pending',
   created_at timestamptz not null default now(),
@@ -236,7 +240,7 @@ create table if not exists public.teacher_requests (
 with ranked_pending_requests as (
   select id,
     row_number() over (
-      partition by school_id, classroom_id
+      partition by school_id, classroom_id, test_number
       order by created_at desc, id desc
     ) as rn
   from public.teacher_requests
@@ -247,8 +251,9 @@ set status = 'duplicate', updated_at = now()
 from ranked_pending_requests r
 where tr.id = r.id and r.rn > 1;
 
+drop index if exists public.teacher_requests_unique_pending_classroom;
 create unique index if not exists teacher_requests_unique_pending_classroom
-on public.teacher_requests (school_id, classroom_id)
+on public.teacher_requests (school_id, classroom_id, test_number)
 where status = 'pending';
 
 create or replace function public.normalize_teacher_school_name(p_name text)
@@ -269,7 +274,8 @@ as $$
   )
 $$;
 
-create or replace function public.teacher_request_school_lookup(p_school_name text)
+drop function if exists public.teacher_request_school_lookup(text);
+create or replace function public.teacher_request_school_lookup(p_school_name text, p_test_number integer default 1)
 returns table (
   school_id text,
   school_name text,
@@ -318,6 +324,7 @@ as $$
       from public.teacher_requests tr
       where tr.school_id = s.id
         and tr.classroom_id = c.id
+        and tr.test_number = greatest(coalesce(p_test_number, 1), 1)
         and tr.status = 'pending'
     ) as is_pending
   from matched_schools s
@@ -325,7 +332,7 @@ as $$
   order by s.match_rank, s.name, c.created_at;
 $$;
 
-grant execute on function public.teacher_request_school_lookup(text) to anon, authenticated;
+grant execute on function public.teacher_request_school_lookup(text, integer) to anon, authenticated;
 
 create or replace function public.save_teacher_requests(p_school_id text, p_requests jsonb)
 returns jsonb
@@ -361,6 +368,7 @@ begin
       from public.teacher_requests tr
       where tr.school_id = p_school_id
         and tr.classroom_id = target_classroom_id
+        and tr.test_number = greatest(coalesce(nullif(item->>'test_number','')::integer, 1), 1)
         and tr.status = 'pending'
     ) then
       duplicate_classroom_ids := array_append(duplicate_classroom_ids, target_classroom_id);
@@ -374,6 +382,7 @@ begin
         robot_type,
         academic_term,
         teaching_period,
+        test_number,
         status
       ) values (
         p_school_id,
@@ -381,6 +390,7 @@ begin
         coalesce(nullif(item->>'robot_type', ''), 'Code & Go'),
         coalesce(nullif(item->>'academic_term', ''), ''),
         coalesce(nullif(item->>'teaching_period', ''), ''),
+        greatest(coalesce(nullif(item->>'test_number', '')::integer, 1), 1),
         'pending'
       );
       inserted_count := inserted_count + 1;

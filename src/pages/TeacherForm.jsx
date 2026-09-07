@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { School, CheckCircle2, Loader2, Send, CheckSquare, Square, Bot, Calendar, Clock, Search } from 'lucide-react';
+import { School, ClipboardCheck, CheckCircle2, Loader2, Send, CheckSquare, Square, Bot, Calendar, Clock, Search } from 'lucide-react';
 import { loadSchoolIndex, saveTeacherRequests, loadTeacherRequests, loadOffices, lookupTeacherRequestSchool } from '../dataService';
 import brandLogo from '../assets/logo.png';
 import Select from '../components/ui/Select';
@@ -37,24 +37,24 @@ const normalizeLearningContent = value => {
   return 'เทอม 1';
 };
 const teacherRequestCooldownKey = (schoolId) => `teacher-request-last-submit:${schoolId}`;
-const teacherRequestPendingKey = (schoolId) => `teacher-request-pending-classes:${schoolId}`;
-const readLocalPendingClassIds = (schoolId) => {
+const teacherRequestPendingKey = (schoolId, testNumber) => `teacher-request-pending-classes:${schoolId}:test-${Math.max(1,Number(testNumber)||1)}`;
+const readLocalPendingClassIds = (schoolId, testNumber) => {
   if (!schoolId) return [];
   try {
-    const value = JSON.parse(localStorage.getItem(teacherRequestPendingKey(schoolId)) || '[]');
+    const value = JSON.parse(localStorage.getItem(teacherRequestPendingKey(schoolId,testNumber)) || '[]');
     return Array.isArray(value) ? value.map(String) : [];
   } catch {
     return [];
   }
 };
-const rememberLocalPendingClassIds = (schoolId, classIds) => {
+const rememberLocalPendingClassIds = (schoolId, testNumber, classIds) => {
   if (!schoolId || !classIds.length) return;
-  const merged = new Set([...readLocalPendingClassIds(schoolId), ...classIds.map(String)]);
-  localStorage.setItem(teacherRequestPendingKey(schoolId), JSON.stringify([...merged]));
+  const merged = new Set([...readLocalPendingClassIds(schoolId,testNumber), ...classIds.map(String)]);
+  localStorage.setItem(teacherRequestPendingKey(schoolId,testNumber), JSON.stringify([...merged]));
 };
-const syncLocalPendingClassIds = (schoolId, classIds) => {
+const syncLocalPendingClassIds = (schoolId, testNumber, classIds) => {
   if (!schoolId) return;
-  localStorage.setItem(teacherRequestPendingKey(schoolId), JSON.stringify([...new Set(classIds.map(String))]));
+  localStorage.setItem(teacherRequestPendingKey(schoolId,testNumber), JSON.stringify([...new Set(classIds.map(String))]));
 };
 const escapeSwalHtml = (value) =>
   String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -76,6 +76,7 @@ export default function TeacherForm() {
   const [requests, setRequests] = useState([]);
   
   const [schoolId, setSchoolId] = useState('');
+  const [testNumber, setTestNumber] = useState('1');
   const [schoolNameInput, setSchoolNameInput] = useState('');
   const [schoolLookupMessage, setSchoolLookupMessage] = useState('');
   const [website, setWebsite] = useState('');
@@ -107,6 +108,7 @@ export default function TeacherForm() {
         const editSchool = schoolData.find(s => String(s.id) === String(editSchoolId));
         setSchoolNameInput(editSchool?.name || '');
         const schoolRequests = requestsData.filter(r => String(r.school_id) === String(editSchoolId) && r.status === 'pending');
+        if (schoolRequests[0]?.test_number) setTestNumber(String(schoolRequests[0].test_number));
         const loadedConfigs = {};
         schoolRequests.forEach(r => {
           loadedConfigs[r.classroom_id] = {
@@ -130,9 +132,9 @@ export default function TeacherForm() {
   const pendingClassIds = new Set(
     [
       ...requests
-      .filter(r => String(r.school_id) === String(schoolId) && r.status === 'pending')
-      .map(r => String(r.classroom_id)),
-      ...readLocalPendingClassIds(schoolId)
+       .filter(r => String(r.school_id) === String(schoolId) && r.status === 'pending' && Number(r.test_number||1)===Number(testNumber||1))
+       .map(r => String(r.classroom_id)),
+      ...readLocalPendingClassIds(schoolId,testNumber)
     ]
   );
   const selectableClassrooms = isEdit ? classrooms : classrooms.filter(c => !pendingClassIds.has(String(c.id)));
@@ -159,16 +161,17 @@ export default function TeacherForm() {
     setLookingUpSchool(true);
     setSchoolLookupMessage('กำลังตรวจสอบชื่อโรงเรียน...');
     try {
-      const matches = await lookupTeacherRequestSchool(schoolNameInput);
+      const matches = await lookupTeacherRequestSchool(schoolNameInput, testNumber);
       if (matches.length === 1) {
         const matchedSchool = matches[0];
         const pendingClassroomIds = (matchedSchool.pendingClassroomIds || []).map(String);
-        syncLocalPendingClassIds(matchedSchool.id, pendingClassroomIds);
+        syncLocalPendingClassIds(matchedSchool.id, testNumber, pendingClassroomIds);
         setSchools(matches);
         setRequests([...new Set(pendingClassroomIds)].map(classroomId => ({
           school_id: matchedSchool.id,
           classroom_id: classroomId,
-          status: 'pending'
+          status: 'pending',
+          test_number: Number(testNumber)||1
         })));
         setSchoolId(matchedSchool.id);
         setSchoolNameInput(matchedSchool.name);
@@ -289,7 +292,7 @@ export default function TeacherForm() {
         return `
           <li style="padding:8px 0;border-bottom:1px solid var(--line);text-align:left">
             <b>${escapeSwalHtml(classroomName)}</b><br/>
-            <small>หุ่นยนต์: ${escapeSwalHtml(config.robot || '-')} · เนื้อหาที่เรียน: ${escapeSwalHtml(normalizeLearningContent(config.term))} · คาบสอน: ${escapeSwalHtml(config.period || '-')}</small>
+            <small>ครั้งที่: ${escapeSwalHtml(testNumber)} · หุ่นยนต์: ${escapeSwalHtml(config.robot || '-')} · เนื้อหาที่เรียน: ${escapeSwalHtml(normalizeLearningContent(config.term))} · คาบสอน: ${escapeSwalHtml(config.period || '-')}</small>
           </li>
         `;
       }).join('');
@@ -317,16 +320,16 @@ export default function TeacherForm() {
     isSubmittingRef.current = true;
     setSubmitting(true);
     try {
-      await saveTeacherRequests(configs, schoolId, isEdit);
+      await saveTeacherRequests(configs, schoolId, isEdit, testNumber);
       if (!isEdit) {
         localStorage.setItem(teacherRequestCooldownKey(schoolId), String(Date.now()));
-        rememberLocalPendingClassIds(schoolId, activeIds);
+        rememberLocalPendingClassIds(schoolId, testNumber, activeIds);
         setRequests(prev => {
-          const seen = new Set(prev.map(row => `${row.school_id}:${row.classroom_id}`));
+          const seen = new Set(prev.map(row => `${row.school_id}:${row.classroom_id}:${row.test_number||1}`));
           const additions = activeIds
-            .map(classroomId => ({ school_id: schoolId, classroom_id: classroomId, status: 'pending' }))
+            .map(classroomId => ({ school_id: schoolId, classroom_id: classroomId, status: 'pending', test_number: Number(testNumber)||1 }))
             .filter(row => {
-              const key = `${row.school_id}:${row.classroom_id}`;
+              const key = `${row.school_id}:${row.classroom_id}:${row.test_number}`;
               if (seen.has(key)) return false;
               seen.add(key);
               return true;
@@ -436,7 +439,10 @@ export default function TeacherForm() {
             </Field>
           )}
 
-          <Field label="โรงเรียน" icon={<School size={18}/>}>
+          <Field
+            label="โรงเรียน"
+            icon={<School size={18}/>}
+          >
             <div style={{ display: 'flex', gap: '10px', alignItems: 'stretch' }}>
               <input
                 type="text"
@@ -461,11 +467,40 @@ export default function TeacherForm() {
             )}
           </Field>
 
+          <div style={{ width: '170px', maxWidth: '100%' }}>
+            <Field
+              label="ครั้งที่ทดสอบ"
+              icon={<ClipboardCheck size={18}/>}
+            >
+              <input
+                type="number"
+                min="1"
+                max="99"
+                required
+                value={testNumber}
+                onChange={e => {
+                  const next = e.target.value;
+                  if (next !== '' && !/^\d+$/.test(next)) return;
+                  setTestNumber(next);
+                  if (next && Number(next) >= 1 && !isEdit && schoolId) {
+                    setSchoolId('');
+                    setConfigs({});
+                    setRequests([]);
+                    setSchoolLookupMessage('เปลี่ยนครั้งที่ทดสอบแล้ว กรุณาตรวจสอบชื่อโรงเรียนอีกครั้ง');
+                  }
+                }}
+                onBlur={() => setTestNumber(String(Math.max(1, Number(testNumber) || 1)))}
+                placeholder="เช่น 1"
+                disabled={isEdit}
+              />
+            </Field>
+          </div>
+
           {schoolId && classrooms.length > 0 && (
             <div className="teacher-class-list" style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', marginTop: '10px' }}>
               <div className="teacher-class-toolbar" style={{ background: 'var(--bg)', padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontWeight: '600', color: 'var(--text)' }}>
-                  รายการชั้นเรียน ({activeCount}/{selectableClassrooms.length})
+                  รายการชั้นเรียน · ครั้งที่ {testNumber} ({activeCount}/{selectableClassrooms.length})
                 </span>
                 <button type="button" onClick={handleSelectAll} style={{ background: 'none', border: 'none', color: 'var(--brand)', cursor: 'pointer', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '500' }}>
                   {allSelected ? <CheckSquare size={18}/> : <Square size={18}/>} {allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}

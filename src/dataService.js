@@ -299,15 +299,16 @@ export async function searchSchoolStudents(schoolId, classroomIds, searchTerm) {
   }));
 }
 
-export async function saveTeacherRequests(configs, schoolId, isEdit=false) {
+export async function saveTeacherRequests(configs, schoolId, isEdit=false, testNumber=1) {
   if (isEdit) {
-    await supabase.from('teacher_requests').delete().eq('school_id', schoolId).eq('status', 'pending');
+    await supabase.from('teacher_requests').delete().eq('school_id', schoolId).eq('test_number', Math.max(1, Number(testNumber)||1)).eq('status', 'pending');
   }
   const rows = Object.entries(configs).map(([classroomId, config]) => ({
     classroom_id: classroomId,
     robot_type: config.robot,
     academic_term: config.term,
-    teaching_period: String(config.period)
+    teaching_period: String(config.period),
+    test_number: Math.max(1, Number(testNumber)||1)
   }));
   if (!rows.length) return;
   if (!isEdit) {
@@ -332,7 +333,8 @@ export async function saveTeacherRequests(configs, schoolId, isEdit=false) {
     classroom_id: row.classroom_id,
     robot_type: row.robot_type,
     academic_term: row.academic_term,
-    teaching_period: row.teaching_period,
+      teaching_period: row.teaching_period,
+      test_number: row.test_number,
     status: 'pending'
   }));
   if (rows.length) {
@@ -347,8 +349,8 @@ export async function saveTeacherRequests(configs, schoolId, isEdit=false) {
   }
 }
 
-export async function lookupTeacherRequestSchool(schoolName) {
-  const { data, error } = await supabase.rpc('teacher_request_school_lookup', { p_school_name: schoolName });
+export async function lookupTeacherRequestSchool(schoolName, testNumber=1) {
+  const { data, error } = await supabase.rpc('teacher_request_school_lookup', { p_school_name: schoolName, p_test_number: Math.max(1, Number(testNumber)||1) });
   must({ data, error });
   const schoolMap = new Map();
   (data || []).forEach(row => {
@@ -381,6 +383,7 @@ export async function loadTeacherRequests() {
       robot_type,
       academic_term,
       teaching_period,
+      test_number,
       status,
       created_at,
       schools (name),
@@ -393,6 +396,7 @@ export async function loadTeacherRequests() {
       robot_type,
       academic_term,
       teaching_period,
+      test_number,
       note,
       status,
       created_at,
@@ -415,11 +419,12 @@ export async function loadTeacherRequests() {
   return data || [];
 }
 
-export async function updateTeacherRequestStatusBySchool(schoolId, status) {
+export async function updateTeacherRequestStatusBySchool(schoolId, testNumber, status) {
   must(await supabase
     .from('teacher_requests')
     .update({ status, updated_at: new Date().toISOString() })
     .eq('school_id', schoolId)
+    .eq('test_number', Math.max(1, Number(testNumber)||1))
     .eq('status', 'pending')
   );
 }
@@ -445,11 +450,12 @@ export async function updateTeacherRequestRows(rows) {
   }));
 }
 
-export async function deleteTeacherRequestBySchool(schoolId) {
+export async function deleteTeacherRequestBySchool(schoolId, testNumber) {
   must(await supabase
     .from('teacher_requests')
     .delete()
     .eq('school_id', schoolId)
+    .eq('test_number', Math.max(1, Number(testNumber)||1))
   );
 }
 

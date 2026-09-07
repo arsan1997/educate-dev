@@ -27,6 +27,7 @@ const normalizeLearningContent = value => {
   if (/^2(?:\D|$)|เทอม\s*2|term\s*2/i.test(text)) return 'เทอม 2';
   return 'เทอม 1';
 };
+const requestTestNumber = request => Math.max(1, Number(request?.test_number)||1);
 
 const themeSwal = Swal.mixin({
   customClass: {
@@ -90,6 +91,7 @@ export default function OnsiteDashboard({ flash, offices }) {
   const [expandedSchools, setExpandedSchools] = useState({});
   const [filterRequestRobot, setFilterRequestRobot] = useState('');
   const [filterRequestTerm, setFilterRequestTerm] = useState('');
+  const [filterRequestTestNumber, setFilterRequestTestNumber] = useState('');
   const [editingRequestGroup, setEditingRequestGroup] = useState(null);
   const [editingRequestRows, setEditingRequestRows] = useState([]);
   const [savingRequestEdit, setSavingRequestEdit] = useState(false);
@@ -149,12 +151,12 @@ export default function OnsiteDashboard({ flash, offices }) {
     if (flash) flash('คัดลอกลิงก์เรียบร้อยแล้ว ส่งให้ครูได้เลย');
   };
 
-  const handleAcknowledge = async (schoolId) => {
+  const handleAcknowledge = async (schoolId, testNumber, groupKey) => {
     try {
-      await updateTeacherRequestStatusBySchool(schoolId, 'done');
+      await updateTeacherRequestStatusBySchool(schoolId, testNumber, 'done');
       if (flash) flash('บันทึกสถานะ "จัดเตรียมแล้ว" เรียบร้อย');
       fetchRequests();
-      setExpandedSchools(prev => ({ ...prev, [schoolId]: false }));
+      setExpandedSchools(prev => ({ ...prev, [groupKey]: false }));
     } catch (err) {
       themeSwal.fire({
         icon: 'error',
@@ -167,10 +169,10 @@ export default function OnsiteDashboard({ flash, offices }) {
     }
   };
 
-  const handleDeleteRequestGroup = (schoolId) => {
+  const handleDeleteRequestGroup = (schoolId, testNumber) => {
     themeSwal.fire({
       title: 'ยืนยันการลบทิ้ง',
-      text: 'คุณแน่ใจหรือไม่ว่าต้องการลบคำขอเตรียมความพร้อมของโรงเรียนนี้?',
+      text: `คุณแน่ใจหรือไม่ว่าต้องการลบคำขอเตรียมความพร้อม ครั้งที่ ${testNumber} ของโรงเรียนนี้?`,
       icon: 'warning',
       iconColor: 'var(--orange)',
       showCancelButton: true,
@@ -180,7 +182,7 @@ export default function OnsiteDashboard({ flash, offices }) {
     }).then(async (result) => {
       if (result.isConfirmed) {
         try {
-          await deleteTeacherRequestBySchool(schoolId);
+          await deleteTeacherRequestBySchool(schoolId, testNumber);
           if (flash) flash('ลบคำขอเรียบร้อยแล้ว');
           fetchRequests();
         } catch (err) {
@@ -491,25 +493,30 @@ export default function OnsiteDashboard({ flash, offices }) {
   };
 
   const uniqueRequestTerms = [...new Set(requests.map(r => normalizeLearningContent(r.academic_term)).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'th'));
+  const uniqueRequestTestNumbers = [...new Set(requests.map(requestTestNumber))].sort((a,b) => a-b);
   const filteredRequests = requests.filter(r => 
     (!filterRequestRobot || r.robot_type === filterRequestRobot) &&
-    (!filterRequestTerm || normalizeLearningContent(r.academic_term) === filterRequestTerm)
+    (!filterRequestTerm || normalizeLearningContent(r.academic_term) === filterRequestTerm) &&
+    (!filterRequestTestNumber || requestTestNumber(r) === Number(filterRequestTestNumber))
   );
 
   const groupedRequests = filteredRequests.reduce((acc, curr) => {
-    if (!acc[curr.school_id]) {
-      acc[curr.school_id] = {
+    const testNumber=requestTestNumber(curr),groupKey=`${curr.school_id}:test-${testNumber}`;
+    if (!acc[groupKey]) {
+      acc[groupKey] = {
+        key: groupKey,
         school_id: curr.school_id,
         schoolName: curr.schools?.name || 'ไม่ทราบชื่อโรงเรียน',
+        testNumber,
         created_at: curr.created_at,
         status: curr.status,
         details: []
       };
     }
-    acc[curr.school_id].details.push(curr);
-    if (curr.status === 'pending') acc[curr.school_id].status = 'pending';
-    if (new Date(curr.created_at) > new Date(acc[curr.school_id].created_at)) {
-      acc[curr.school_id].created_at = curr.created_at;
+    acc[groupKey].details.push(curr);
+    if (curr.status === 'pending') acc[groupKey].status = 'pending';
+    if (new Date(curr.created_at) > new Date(acc[groupKey].created_at)) {
+      acc[groupKey].created_at = curr.created_at;
     }
     return acc;
   }, {});
@@ -774,6 +781,10 @@ export default function OnsiteDashboard({ flash, offices }) {
               <option value="">-- หุ่นยนต์ทั้งหมด --</option>
               {ROBOT_TYPES.map(r => <option key={r} value={r}>{r}</option>)}
             </Select>
+            <Select value={filterRequestTestNumber} onChange={setFilterRequestTestNumber} style={{ padding: '6px 12px', fontSize: '0.85rem', width: 'auto' }}>
+              <option value="">-- ครั้งที่ทั้งหมด --</option>
+              {uniqueRequestTestNumbers.map(number => <option key={number} value={number}>ครั้งที่ {number}</option>)}
+            </Select>
             <button className="button" onClick={fetchRequests} style={{ padding: '6px 12px', fontSize: '0.85rem' }}>
               {loading ? 'กำลังโหลด...' : 'รีเฟรชข้อมูล'}
             </button>
@@ -786,6 +797,7 @@ export default function OnsiteDashboard({ flash, offices }) {
               <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #e9ecef' }}>
                 <th style={{ padding: '15px 20px', color: '#495057', fontWeight: '600', width: '150px' }}>ล่าสุดเมื่อ</th>
                 <th style={{ padding: '15px 10px', color: '#495057', fontWeight: '600' }}>โรงเรียน</th>
+                <th style={{ padding: '15px 10px', color: '#495057', fontWeight: '600', textAlign: 'center', width: '100px' }}>ครั้งที่</th>
                 <th style={{ padding: '15px 10px', color: '#495057', fontWeight: '600', textAlign: 'center' }}>จำนวนห้องเรียน</th>
                 <th style={{ padding: '15px 10px', color: '#495057', fontWeight: '600', textAlign: 'center', width: '130px' }}>สถานะ</th>
                 <th style={{ padding: '15px 20px', color: '#495057', fontWeight: '600', textAlign: 'right', width: '220px' }}>จัดการ</th>
@@ -793,13 +805,14 @@ export default function OnsiteDashboard({ flash, offices }) {
             </thead>
             <tbody>
               {groupArray.map(group => {
-                const isExpanded = expandedSchools[group.school_id];
+                const isExpanded = expandedSchools[group.key];
                 const periodSummaries = getPeriodSummary(group.details);
                 return (
-                <React.Fragment key={group.school_id}>
+                <React.Fragment key={group.key}>
                   <tr className="onsite-request-row" style={{ borderBottom: isExpanded ? 'none' : '1px solid #e9ecef', background: group.status === 'pending' ? '#fff9f0' : 'white', transition: 'background 0.2s' }}>
                     <td data-label="ล่าสุดเมื่อ" style={{ padding: '15px 20px', color: 'var(--text-light)', fontSize: '0.9rem' }}>{formatDate(group.created_at)}</td>
                     <td data-label="โรงเรียน" style={{ padding: '15px 10px', fontWeight: '600', color: 'var(--text)' }}>{group.schoolName}</td>
+                    <td data-label="ครั้งที่" style={{ padding: '15px 10px', textAlign: 'center' }}><span style={{ display: 'inline-block', padding: '4px 10px', borderRadius: '999px', background: 'var(--accent-soft)', color: 'var(--accent)', fontSize: '0.85rem', fontWeight: 700 }}>ครั้งที่ {group.testNumber}</span></td>
                     <td data-label="จำนวนห้องเรียน" style={{ padding: '15px 10px', textAlign: 'center', color: 'var(--text-light)' }}>
                        <span style={{ background: '#e2e8f0', color: '#475569', padding: '4px 10px', borderRadius: '12px', fontSize: '0.85rem', fontWeight: '600' }}>
                          {group.details.length} ห้อง
@@ -814,18 +827,18 @@ export default function OnsiteDashboard({ flash, offices }) {
                     </td>
                     <td data-label="จัดการ" style={{ padding: '15px 20px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                        <button className="button" style={{ padding: '6px 12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => toggleExpand(group.school_id)}>
+                        <button className="button" style={{ padding: '6px 12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => toggleExpand(group.key)}>
                           <Search size={14} /> {isExpanded ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
                         </button>
                         {group.status === 'pending' && (
-                          <button className="primary" style={{ padding: '6px 12px', fontSize: '0.85rem', border: 'none' }} onClick={() => handleAcknowledge(group.school_id)}>
+                          <button className="primary" style={{ padding: '6px 12px', fontSize: '0.85rem', border: 'none' }} onClick={() => handleAcknowledge(group.school_id, group.testNumber, group.key)}>
                             รับทราบ
                           </button>
                         )}
                         <button className="button primary-text" style={{ padding: '6px 12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--brand)' }} onClick={() => openRequestEditor(group)} title="แก้ไขคำขอ">
                           <Edit2 size={14} />
                         </button>
-                        <button className="button danger-text" style={{ padding: '6px 12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => handleDeleteRequestGroup(group.school_id)} title="ลบคำขอนี้ทิ้ง">
+                        <button className="button danger-text" style={{ padding: '6px 12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => handleDeleteRequestGroup(group.school_id, group.testNumber)} title="ลบคำขอนี้ทิ้ง">
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -833,10 +846,10 @@ export default function OnsiteDashboard({ flash, offices }) {
                   </tr>
                   {isExpanded && (
                     <tr className="onsite-request-expanded-row" style={{ background: 'var(--bg)', borderBottom: '1px solid var(--line)' }}>
-                      <td colSpan="5" style={{ padding: '15px 25px 25px', borderLeft: '4px solid var(--accent)' }}>
+                      <td colSpan="6" style={{ padding: '15px 25px 25px', borderLeft: '4px solid var(--accent)' }}>
                         <div style={{ background: 'var(--panel)', borderRadius: '12px', padding: '20px', border: '1px solid var(--line)', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
                           <h4 style={{ margin: '0 0 15px 0', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1rem' }}>
-                            <FileText size={18} color="var(--accent)"/> สรุปภาพรวมคาบเรียน (เพื่อคำนวณหาระดับข้อสอบ)
+                            <FileText size={18} color="var(--accent)"/> สรุปภาพรวมคาบเรียน · ครั้งที่ {group.testNumber} (เพื่อคำนวณหาระดับข้อสอบ)
                           </h4>
                           <div style={{ background: 'var(--accent-soft)', padding: '15px 20px', borderRadius: '8px', marginBottom: '20px', border: '1px solid color-mix(in srgb, var(--accent) 20%, transparent)' }}>
                             {periodSummaries.map((s, idx) => (
