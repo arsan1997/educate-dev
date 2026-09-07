@@ -1,5 +1,5 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {Sun, Moon, LayoutDashboard, Users, ClipboardPenLine, FileText, Upload, Plus, Save, Download, ChevronDown, ChevronLeft, School, Bot, CheckCircle2, AlertCircle, X, LogOut, Cloud, CloudOff, Edit2, ShieldCheck, Clock3, Eye, UserMinus, RotateCcw, Trash2} from 'lucide-react';
+import {Sun, Moon, LayoutDashboard, Users, ClipboardPenLine, FileText, Upload, Plus, Save, Download, ChevronDown, ChevronLeft, School, Bot, CheckCircle2, AlertCircle, X, LogOut, Cloud, CloudOff, Edit2, ShieldCheck, Clock3, Eye, UserMinus, RotateCcw, Trash2, ListOrdered} from 'lucide-react';
 import {sampleSchool,parseSchoolWorkbook,calcStats,calcRanks,ROBOT_TYPES} from '../model';
 import {supabase,isSupabaseConfigured} from '../supabase';
 import {loadSchoolIndex,loadSchoolDetail,loadDashboardInsights,saveSchoolMeta,saveSessionRows,saveClassroomStudents,saveResultRows,saveSchoolBundle,deleteSchool,loadCurrentProfile,loadAccessAdmin,updateUserAccess,saveStudentOrder,loadOffices,createOffice,acquireLock,releaseLock,keepLockAlive} from '../dataService';
@@ -13,6 +13,7 @@ function Classroom({meta,setMeta,students,setStudents,importExcel,importBulkExce
   const [adding,setAdding]=useState(false);
   const [addingOffice,setAddingOffice]=useState(false),[newOffice,setNewOffice]=useState('');
   const [editingStudent, setEditingStudent] = useState(null);
+  const [editingNumbers,setEditingNumbers]=useState(false),[numberDraft,setNumberDraft]=useState({}),[savingNumbers,setSavingNumbers]=useState(false);
   const [search, setSearch] = useState('');
   const [schoolSearch,setSchoolSearch]=useState(''),[officeFilter,setOfficeFilter]=useState(school?.officeId||'unassigned');
   const [statusFilter,setStatusFilter]=useState('active');
@@ -44,6 +45,18 @@ function Classroom({meta,setMeta,students,setStudents,importExcel,importBulkExce
 
   const activeCount=students.filter(s=>s.active!==false).length;
   const filteredStudents=students.filter(s=>s.name.toLowerCase().includes(search.toLowerCase())&&(statusFilter==='all'||(statusFilter==='active'?s.active!==false:s.active===false))).sort((a,b)=>Number(a.no)-Number(b.no));
+  const numberEditorRows=[...students].sort((a,b)=>Number(a.no)-Number(b.no)||String(a.name).localeCompare(String(b.name),'th'));
+  const numberValidation=useMemo(()=>{
+    const invalidIds=new Set(),counts=new Map();
+    numberEditorRows.forEach(student=>{
+      const value=String(numberDraft[student.id]??student.no).trim(),number=Number(value);
+      if(!/^\d+$/.test(value)||!Number.isSafeInteger(number)||number<1){invalidIds.add(student.id);return;}
+      counts.set(number,(counts.get(number)||0)+1);
+    });
+    const duplicateNumbers=new Set([...counts].filter(([,count])=>count>1).map(([number])=>number));
+    const duplicateIds=new Set(numberEditorRows.filter(student=>duplicateNumbers.has(Number(String(numberDraft[student.id]??student.no).trim()))).map(student=>student.id));
+    return {invalidIds,duplicateIds,duplicateNumbers,valid:!invalidIds.size&&!duplicateNumbers.size};
+  },[numberEditorRows,numberDraft]);
   const officeSchools=schools.filter(s=>officeFilter==='unassigned'?!s.officeId:String(s.officeId)===String(officeFilter)),matchingSchools=officeSchools.filter(s=>s.name.toLocaleLowerCase('th-TH').includes(schoolSearch.trim().toLocaleLowerCase('th-TH')));
   useEffect(()=>{setOfficeFilter(school?.officeId||'unassigned');setSchoolSearch('')},[school?.id]);
 
@@ -74,6 +87,26 @@ function Classroom({meta,setMeta,students,setStudents,importExcel,importBulkExce
       setStudents(next);setEditingStudent(null);
       flash(occupied?`สลับเลขที่ ${oldNo} และ ${newNo} เรียบร้อยแล้ว`:'แก้ไขข้อมูลเรียบร้อยแล้ว');
     }catch(error){console.error(error);flash(`เปลี่ยนเลขที่ไม่สำเร็จ: ${error.message}`)}
+  };
+
+  const openNumberEditor=()=>{
+    setNumberDraft(Object.fromEntries(students.map(student=>[student.id,String(student.no)])));
+    setEditingNumbers(true);
+  };
+  const saveStudentNumbers=async()=>{
+    if(!numberValidation.valid)return;
+    const assignments=numberEditorRows.map(student=>({id:student.id,no:Number(numberDraft[student.id]??student.no)}));
+    const assignedNumbers=new Map(assignments.map(item=>[item.id,item.no]));
+    const changedCount=students.filter(student=>Number(student.no)!==assignedNumbers.get(student.id)).length;
+    if(!changedCount){setEditingNumbers(false);return;}
+    try{
+      setSavingNumbers(true);
+      await saveStudentOrder(classroom.id,assignments);
+      setStudents(students.map(student=>({...student,no:assignedNumbers.get(student.id)})));
+      setEditingNumbers(false);
+      flash(`บันทึกเลขที่นักเรียน ${changedCount} คนเรียบร้อยแล้ว`);
+    }catch(error){console.error(error);flash(`แก้ไขเลขที่ทั้งห้องไม่สำเร็จ: ${error.message}`)}
+    finally{setSavingNumbers(false);}
   };
 
   const leaveStudent=student=>{
@@ -132,7 +165,7 @@ function Classroom({meta,setMeta,students,setStudents,importExcel,importBulkExce
   <div className="card classroom-list">
     <div className="card-head roster-head">
       <div><b>รายชื่อนักเรียน</b><small>{classroom?.name} · กำลังเรียน {activeCount} คน · ออกแล้ว {students.length-activeCount} คน</small></div>
-      <button className="primary roster-add" disabled={editingBlocked} onClick={()=>setAdding(true)}><Plus/>เพิ่มนักเรียน</button>
+       <div className="roster-head-actions"><button className="button roster-renumber" disabled={editingBlocked||!students.length} onClick={openNumberEditor}><ListOrdered/>แก้ไขเลขที่ทั้งห้อง</button><button className="primary roster-add" disabled={editingBlocked} onClick={()=>setAdding(true)}><Plus/>เพิ่มนักเรียน</button></div>
     </div>
     <div className="roster-toolbar">
       <div className="roster-filter">
@@ -157,9 +190,10 @@ function Classroom({meta,setMeta,students,setStudents,importExcel,importBulkExce
       <span className="roster-result">พบ {filteredStudents.length} คน</span>
     </div>
   <div className="table-wrap classroom-table-wrap"><table className="responsive-card-table classroom-student-table"><thead><tr><th>เลขที่</th><th>ชื่อ–นามสกุล</th><th>สถานะ</th><th className="center">จัดการ</th></tr></thead><tbody>{filteredStudents.map(s=><tr key={s.id} className={s.active===false?'student-inactive':''}><td data-label="เลขที่" className="number">{String(s.no).padStart(2,'0')}</td><td data-label="ชื่อ–นามสกุล"><b>{s.name}</b></td><td data-label="สถานะ"><span className={`student-status ${s.active===false?'left':'active'}`}>{s.active===false?`ออกแล้ว${s.leftAt?` · ${s.leftAt}`:''}`:'กำลังเรียน'}</span></td><td data-label="จัดการ" className="center"><div className="student-actions"><button disabled={editingBlocked} className="icon-btn" title="แก้ไขข้อมูลหรือสลับเลขที่" onClick={()=>setEditingStudent(s)}><Edit2 size={16}/></button>{s.active===false?<button disabled={editingBlocked} className="icon-btn restore" title="กู้คืน" onClick={()=>restoreStudent(s.id)}><RotateCcw size={16}/></button>:<button disabled={editingBlocked} className="icon-btn danger-text" title="ออกจากชั้นเรียน" onClick={()=>leaveStudent(s)}><UserMinus size={16}/></button>}</div></td></tr>)}</tbody></table></div></div>
-  {adding && <AddStudentModal onClose={()=>setAdding(false)} onAdd={addStudents} nextNo={students.length+1}/>}
-  {editingStudent && <AddStudentModal onClose={()=>setEditingStudent(null)} onAdd={data=>updateStudent(data[0])} onDelete={requestDeleteStudent} student={editingStudent} isEdit={true}/>}
-  {confirming && <ConfirmModal {...confirming} onClose={()=>setConfirming(null)}/>} 
+   {adding && <AddStudentModal onClose={()=>setAdding(false)} onAdd={addStudents} nextNo={students.length+1}/>}
+   {editingStudent && <AddStudentModal onClose={()=>setEditingStudent(null)} onAdd={data=>updateStudent(data[0])} onDelete={requestDeleteStudent} student={editingStudent} isEdit={true}/>}
+   {editingNumbers&&<div className="modal-backdrop" onMouseDown={event=>event.target===event.currentTarget&&!savingNumbers&&setEditingNumbers(false)}><div className="modal-card bulk-number-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-number-title"><div className="modal-head"><div><span className="eyebrow">{classroom?.name}</span><h2 id="bulk-number-title">แก้ไขเลขที่ทั้งห้อง</h2><small>เปลี่ยนเฉพาะเลขที่ คะแนน สถานะ และข้อมูลนักเรียนเดิมจะคงอยู่</small></div><button type="button" className="modal-close" disabled={savingNumbers} onClick={()=>setEditingNumbers(false)} aria-label="ปิด"><X/></button></div><div className="bulk-number-body"><div className="bulk-number-note">กรอกเลขที่ใหม่ให้ครบทุกคน ระบบจะตรวจเลขที่ซ้ำก่อนบันทึก</div><div className="bulk-number-table-wrap"><table className="bulk-number-table"><thead><tr><th>เดิม</th><th>นักเรียน</th><th>เลขที่ใหม่</th></tr></thead><tbody>{numberEditorRows.map(student=>{const invalid=numberValidation.invalidIds.has(student.id),duplicate=numberValidation.duplicateIds.has(student.id);return <tr key={student.id} className={invalid||duplicate?'invalid':''}><td>{String(student.no).padStart(2,'0')}</td><td><b>{student.name}</b>{student.active===false&&<small>ออกแล้ว</small>}</td><td><input aria-label={`เลขที่ใหม่ของ ${student.name}`} className={invalid||duplicate?'input-error':''} type="number" min="1" step="1" inputMode="numeric" value={numberDraft[student.id]??student.no} onChange={event=>setNumberDraft(current=>({...current,[student.id]:event.target.value}))}/></td></tr>})}</tbody></table></div>{numberValidation.invalidIds.size>0&&<p className="bulk-number-error">กรุณากรอกเลขที่เป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไปให้ครบทุกคน</p>}{numberValidation.duplicateNumbers.size>0&&<p className="bulk-number-error">เลขที่ซ้ำ: {[...numberValidation.duplicateNumbers].sort((a,b)=>a-b).join(', ')}</p>}</div><div className="modal-actions"><button type="button" className="button" disabled={savingNumbers} onClick={()=>setEditingNumbers(false)}>ยกเลิก</button><button type="button" className="primary" disabled={savingNumbers||!numberValidation.valid} onClick={saveStudentNumbers}><Save/>{savingNumbers?'กำลังบันทึก...':'ตรวจสอบและบันทึก'}</button></div></div></div>}
+   {confirming && <ConfirmModal {...confirming} onClose={()=>setConfirming(null)}/>}
   </>
 }
 

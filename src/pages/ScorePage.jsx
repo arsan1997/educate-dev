@@ -307,7 +307,7 @@ function ScorePage({meta,setMeta,students,update,move,refs,feedback,setFeedback,
     if (statusFilter === 'failed') return !s.absent && hasScore && Number(s.score) < 35;
     if (statusFilter === 'pending') return !s.absent && !hasScore;
     return true;
-  });
+  }).sort((a,b)=>Number(a.no)-Number(b.no)||String(a.name).localeCompare(String(b.name),'th'));
   const ranks=useMemo(()=>calcRanks(students),[students]);
  
   if(!schools||!schools.length)return <div className="page-title"><div><span className="eyebrow">การประเมินผล</span><h1>บันทึกผลการทดสอบ</h1><p>ยังไม่มีข้อมูลโรงเรียน โปรดไปที่แท็บ "จัดการชั้นเรียน" เพื่อเพิ่มข้อมูล</p></div></div>;
