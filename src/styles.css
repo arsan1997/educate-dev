@@ -226,6 +226,7 @@ kbd{background:var(--panel);border:1px solid var(--line);border-bottom-width:2px
 .pdf-settings-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;font-size:11px;color:var(--muted)}
 .pdf-settings-footer button{display:flex;align-items:center;gap:6px;white-space:nowrap}.pdf-settings-footer-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px}
 .report{padding:24px;display:flex;flex-direction:column;gap:18px}
+.report-filter-grid{grid-template-columns:minmax(0,1.45fr) minmax(260px,.85fr);align-items:end}.report-filter-grid .field:last-child .select-trigger{font-weight:700}
 .report-icon{width:48px;height:48px;border-radius:12px;display:grid;place-items:center}
 .report-icon svg{width:21px}
 .report-icon.pdf{background:#f5eae7;color:#a8514a}

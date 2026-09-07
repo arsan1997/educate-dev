@@ -1539,7 +1539,7 @@ function App({user,profile,onSignOut}){
    anchor.href=url;anchor.download=`${draft.type==='score'?'ตารางคะแนน':'สรุปและข้อเสนอแนะ'} -${fileSchoolName}.docx`;document.body.appendChild(anchor);anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);flash('ส่งออก Word เรียบร้อยแล้ว');
   }catch(error){console.error('Word export failed',error);flash(`ส่งออก Word ไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`);throw error}
  };
-  const openPDFPreview=async()=>{try{const preview=await exportPDF('preview');if(preview)setPdfPreview(preview)}catch(error){console.error('PDF preview failed',error);flash(`สร้างตัวอย่าง PDF ไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`)}};
+  const openPDFPreview=async(overrides={})=>{try{const preview=await exportPDF('preview',overrides);if(preview)setPdfPreview(preview)}catch(error){console.error('PDF preview failed',error);flash(`สร้างตัวอย่าง PDF ไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`)}};
   const openScoreReportSelector=async()=>{
    if(readOnly){flash('บัญชีดูอย่างเดียวไม่สามารถสร้าง PDF ได้');return}
    if(!school){flash('กรุณาเลือกโรงเรียนก่อนสร้าง PDF');return}
