@@ -58,6 +58,31 @@ const fetchAll = async (builderFn) => {
   }
   return allData;
 };
+const currentUserId = async () => {
+  const {data,error}=await supabase.auth.getUser();
+  if(error)throw error;
+  if(!data?.user?.id)throw new Error('ไม่พบผู้ใช้งานที่เข้าสู่ระบบ');
+  return data.user.id;
+};
+const softDeleteById = async (table,id) => {
+  const now=new Date().toISOString(),deletedBy=await currentUserId();
+  const rows=must(await supabase.from(table).update({is_deleted:true,deleted_at:now,deleted_by:deletedBy,updated_at:now}).eq('id',String(id)).select('id'))||[];
+  if(rows.length!==1)throw new Error('ไม่พบข้อมูลหรือไม่มีสิทธิ์ลบ กรุณารีเฟรชแล้วลองใหม่');
+};
+const restoreById = async (table,id) => {
+  const rows=must(await supabase.from(table).update({is_deleted:false,deleted_at:null,deleted_by:null,updated_at:new Date().toISOString()}).eq('id',String(id)).select('id'))||[];
+  if(rows.length!==1)throw new Error('ไม่พบข้อมูลหรือไม่มีสิทธิ์กู้คืน กรุณารีเฟรชแล้วลองใหม่');
+};
+const attachDeletedActors = async rows => {
+  const ids=[...new Set((rows||[]).map(row=>row.deletedBy).filter(Boolean))];
+  if(!ids.length)return rows||[];
+  const profiles=await fetchAll(()=>supabase.from('profiles').select('id,full_name,email').in('id',ids));
+  const byId=new Map(profiles.map(profile=>[profile.id,profile]));
+  return rows.map(row=>{
+    const actor=byId.get(row.deletedBy);
+    return {...row,deletedByName:actor?.full_name||actor?.email||'',deletedByEmail:actor?.email||''};
+  });
+};
 export async function loadSchools(){
  const schools=await fetchAll(()=>supabase.from('schools').select('*').eq('is_deleted',false).order('created_at'));if(!schools.length)return [];
  const ids=schools.map(s=>s.id),classrooms=(await fetchAll(()=>supabase.from('classrooms').select('*').in('school_id',ids).eq('is_deleted',false).order('created_at'))).sort((a,b)=>compareClassNames(a.name, b.name));
@@ -228,38 +253,35 @@ export async function saveSchoolBundle(school,userId){
 }
 
 export async function deleteSchool(schoolId){
- must(await supabase.from('schools').update({is_deleted:true}).eq('id',String(schoolId)));
+ await softDeleteById('schools',schoolId);
 }
 
 export async function loadDeletedSchools(){
- const rows = must(await supabase.from('schools').select('id,name,academic_year,term,updated_at').eq('is_deleted',true).order('updated_at',{ascending:false}))||[];
- return rows.map(s=>({id:s.id, name:s.name, year:s.academic_year, term:s.term, deletedAt: s.updated_at}));
+ const rows=await fetchAll(()=>supabase.from('schools').select('id,name,academic_year,term,deleted_at,deleted_by,updated_at').eq('is_deleted',true).order('deleted_at',{ascending:false,nullsFirst:false}).order('updated_at',{ascending:false}));
+ return attachDeletedActors(rows.map(s=>({id:s.id,name:s.name,year:s.academic_year,term:s.term,deletedAt:s.deleted_at||s.updated_at,deletedBy:s.deleted_by})));
 }
 
 export async function restoreSchool(schoolId){
- must(await supabase.from('schools').update({is_deleted:false}).eq('id',String(schoolId)));
+ await restoreById('schools',schoolId);
 }
 
 export async function deleteClassroom(classroomId){
- must(await supabase.from('classrooms').update({is_deleted: true, updated_at: new Date().toISOString()}).eq('id',String(classroomId)));
+ await softDeleteById('classrooms',classroomId);
 }
 export async function deleteSession(sessionId){
- must(await supabase.from('test_sessions').update({is_deleted: true, updated_at: new Date().toISOString()}).eq('id',String(sessionId)));
+ await softDeleteById('test_sessions',sessionId);
 }
 export async function loadDeletedClassrooms() {
-  const rows = must(await supabase.from('classrooms').select('id,name,school_id,updated_at,schools(name)').eq('is_deleted',true).order('updated_at',{ascending:false}))||[];
-  return rows.map(c=>({id:c.id, name:c.name, schoolName: c.schools?.name, deletedAt: c.updated_at}));
+  const rows=await fetchAll(()=>supabase.from('classrooms').select('id,name,school_id,deleted_at,deleted_by,updated_at,schools(name)').eq('is_deleted',true).order('deleted_at',{ascending:false,nullsFirst:false}).order('updated_at',{ascending:false}));
+  return attachDeletedActors(rows.map(c=>({id:c.id,name:c.name,schoolName:c.schools?.name,deletedAt:c.deleted_at||c.updated_at,deletedBy:c.deleted_by})));
 }
 export async function loadDeletedSessions() {
-  console.log("Fetching deleted sessions...");
-  const response = await supabase.from('test_sessions').select('id,test_name,classroom_id,updated_at,classrooms(name, schools(name))').eq('is_deleted',true).order('updated_at',{ascending:false});
-  console.log("Response:", response);
-  const rows = must(response)||[];
-  return rows.map(s=>({id:s.id, name:s.test_name, className: s.classrooms?.name, schoolName: s.classrooms?.schools?.name, deletedAt: s.updated_at}));
+  const rows=await fetchAll(()=>supabase.from('test_sessions').select('id,test_name,classroom_id,deleted_at,deleted_by,updated_at,classrooms(name,schools(name))').eq('is_deleted',true).order('deleted_at',{ascending:false,nullsFirst:false}).order('updated_at',{ascending:false}));
+  return attachDeletedActors(rows.map(s=>({id:s.id,name:s.test_name,className:s.classrooms?.name,schoolName:s.classrooms?.schools?.name,deletedAt:s.deleted_at||s.updated_at,deletedBy:s.deleted_by})));
 }
 
 export async function restoreSession(sessionId) {
-  must(await supabase.from('test_sessions').update({is_deleted: false, updated_at: new Date().toISOString()}).eq('id', String(sessionId)));
+  await restoreById('test_sessions',sessionId);
 }
 
 export async function hardDeleteSession(sessionId) {
@@ -497,28 +519,29 @@ export async function saveEvaluation(data) {
 }
 
 export async function deleteOnsiteEvaluation(id) {
-  must(await supabase.from('onsite_evaluations').update({ is_deleted: true, updated_at: new Date().toISOString() }).eq('id', id));
+  await softDeleteById('onsite_evaluations',id);
 }
 
 export async function loadDeletedOnsiteEvaluations() {
-  const { data, error } = await supabase
+  const rows=await fetchAll(()=>supabase
     .from('onsite_evaluations')
-    .select('id, eval_date, trainer_name, classrooms(name, schools(name)), updated_at')
-    .eq('is_deleted', true)
-    .order('updated_at', { ascending: false });
-  must({ error });
-  return (data || []).map(d => ({
+    .select('id,eval_date,trainer_name,classrooms(name,schools(name)),deleted_at,deleted_by,updated_at')
+    .eq('is_deleted',true)
+    .order('deleted_at',{ascending:false,nullsFirst:false})
+    .order('updated_at',{ascending:false}));
+  return attachDeletedActors(rows.map(d => ({
     id: d.id,
     date: d.eval_date,
     trainer: d.trainer_name,
     className: d.classrooms?.name,
     schoolName: d.classrooms?.schools?.name,
-    deletedAt: d.updated_at
-  }));
+    deletedAt: d.deleted_at||d.updated_at,
+    deletedBy: d.deleted_by
+  })));
 }
 
 export async function restoreOnsiteEvaluation(id) {
-  must(await supabase.from('onsite_evaluations').update({ is_deleted: false, updated_at: new Date().toISOString() }).eq('id', id));
+  await restoreById('onsite_evaluations',id);
 }
 
 export async function hardDeleteOnsiteEvaluation(id) {
@@ -957,7 +980,7 @@ export async function saveStudentOrder(classroomId, assignments) {
 
 
 export async function restoreClassroom(classroomId) {
-  must(await supabase.from("classrooms").update({ is_deleted: false, updated_at: new Date().toISOString() }).eq("id", String(classroomId)));
+  await restoreById('classrooms',classroomId);
 }
 
 export async function hardDeleteSchool(schoolId) {

@@ -20,6 +20,7 @@ function Classroom({meta,setMeta,students,setStudents,importExcel,importBulkExce
   const [confirming, setConfirming] = useState(null);
   const [classroomLockReady,setClassroomLockReady]=useState(false),[classroomLockMessage,setClassroomLockMessage]=useState('');
   const editingBlocked=readOnly||!classroomLockReady;
+  const canDeleteSchoolStructure=String(user?.email||'').trim().toLowerCase()==='arsan113@gmail.com';
 
   useEffect(()=>{
     let active=true;
@@ -154,10 +155,10 @@ function Classroom({meta,setMeta,students,setStudents,importExcel,importBulkExce
      </Field>
       <Field label="ปีการศึกษา"><input disabled={editingBlocked} value={meta.year||''} onChange={e=>setMeta({...meta,year:e.target.value})}/></Field>
       <Field label="ภาคเรียนที่"><input disabled={editingBlocked} value={meta.term||''} onChange={e=>setMeta({...meta,term:e.target.value})}/></Field>
-      <div className="mini-actions classroom-danger-actions">
-        <button type="button" disabled={editingBlocked} className="school-delete-button" onClick={()=>onDeleteClassroom(classroom?.id)}><X/>ลบชั้นเรียน</button>
-        <button type="button" disabled={editingBlocked} className="school-delete-button" onClick={()=>onDeleteSchool(school.id)}><X/>ลบโรงเรียน</button>
-     </div>
+      {canDeleteSchoolStructure&&<div className="mini-actions classroom-danger-actions">
+       <button type="button" disabled={editingBlocked} className="school-delete-button" onClick={()=>onDeleteClassroom(classroom?.id)}><X/>ลบชั้นเรียน</button>
+       <button type="button" disabled={editingBlocked} className="school-delete-button" onClick={()=>onDeleteSchool(school.id)}><X/>ลบโรงเรียน</button>
+      </div>}
      </div>
     </div>
    </div>

@@ -75,6 +75,20 @@ update public.profiles set role='school_admin' where role='admin';
 update public.profiles set role='viewer' where role='pending';
 alter table public.profiles add constraint profiles_role_check check (role in ('super_admin','school_admin','evaluator','viewer','pending'));
 
+-- Trash audit fields for existing deployments. New installations also receive
+-- these columns from the table definitions below.
+do $$
+declare
+  table_name text;
+begin
+  foreach table_name in array array['schools','classrooms','test_sessions','onsite_evaluations'] loop
+    if to_regclass('public.'||table_name) is not null then
+      execute format('alter table public.%I add column if not exists deleted_at timestamptz',table_name);
+      execute format('alter table public.%I add column if not exists deleted_by uuid references public.profiles(id) on delete set null',table_name);
+    end if;
+  end loop;
+end $$;
+
 create table if not exists public.offices (
   id text primary key, name text not null, active boolean not null default true,
   created_by uuid not null references auth.users(id), created_at timestamptz not null default now()
@@ -85,6 +99,7 @@ create table if not exists public.schools (
   id text primary key, name text not null, academic_year text not null, term text not null,
   office_id text references public.offices(id) on delete set null,
   is_deleted boolean not null default false,
+  deleted_at timestamptz, deleted_by uuid references public.profiles(id) on delete set null,
   created_by uuid not null references auth.users(id), created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
 alter table public.schools add column if not exists office_id text references public.offices(id) on delete set null;
@@ -115,6 +130,7 @@ create table if not exists public.school_members (
 create table if not exists public.classrooms (
   id text primary key, school_id text not null references public.schools(id) on delete cascade, name text not null,
   is_deleted boolean not null default false,
+  deleted_at timestamptz, deleted_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
 
@@ -128,6 +144,7 @@ create table if not exists public.test_sessions (
   id text primary key, classroom_id text not null references public.classrooms(id) on delete cascade,
   test_name text not null, test_date date, test_end_date date, robot_type text, exam_set text, teaching_period text not null default '', trainer text, term text, academic_year text, detail text, summary text,
   locked boolean not null default false, is_deleted boolean not null default false,
+  deleted_at timestamptz, deleted_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
 
@@ -424,9 +441,84 @@ create table if not exists public.onsite_evaluations (
   eval_date date not null default current_date,
   end_date date,
   is_deleted boolean not null default false,
+  deleted_at timestamptz,
+  deleted_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- The database, not the browser, is the source of truth for who deleted or
+-- restored a row. This prevents a client from attributing a deletion to
+-- another account.
+create or replace function public.is_school_structure_delete_owner()
+returns boolean
+language sql
+stable
+security definer
+set search_path=public
+as $$
+  select exists(
+    select 1
+    from public.profiles
+    where id=auth.uid()
+      and lower(btrim(email))='arsan113@gmail.com'
+  )
+$$;
+
+create or replace function public.enforce_school_structure_delete_owner()
+returns trigger
+language plpgsql
+set search_path=public
+as $$
+begin
+  if tg_op='DELETE' then
+    if not public.is_school_structure_delete_owner() then
+      raise exception 'Only the designated owner can delete or restore schools and classrooms' using errcode='42501';
+    end if;
+    return old;
+  end if;
+  if new.is_deleted is distinct from old.is_deleted then
+    if not public.is_school_structure_delete_owner() then
+      raise exception 'Only the designated owner can delete or restore schools and classrooms' using errcode='42501';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function public.set_soft_delete_audit()
+returns trigger
+language plpgsql
+set search_path=public
+as $$
+begin
+  if new.is_deleted is true and old.is_deleted is false then
+    new.deleted_at=now();
+    new.deleted_by=auth.uid();
+  elsif new.is_deleted is false and old.is_deleted is true then
+    new.deleted_at=null;
+    new.deleted_by=null;
+  else
+    new.deleted_at=old.deleted_at;
+    new.deleted_by=old.deleted_by;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists schools_soft_delete_audit on public.schools;
+create trigger schools_soft_delete_audit before update on public.schools for each row execute function public.set_soft_delete_audit();
+drop trigger if exists classrooms_soft_delete_audit on public.classrooms;
+create trigger classrooms_soft_delete_audit before update on public.classrooms for each row execute function public.set_soft_delete_audit();
+drop trigger if exists test_sessions_soft_delete_audit on public.test_sessions;
+create trigger test_sessions_soft_delete_audit before update on public.test_sessions for each row execute function public.set_soft_delete_audit();
+drop trigger if exists onsite_evaluations_soft_delete_audit on public.onsite_evaluations;
+create trigger onsite_evaluations_soft_delete_audit before update on public.onsite_evaluations for each row execute function public.set_soft_delete_audit();
+
+drop trigger if exists schools_delete_owner_guard on public.schools;
+create trigger schools_delete_owner_guard before update or delete on public.schools for each row execute function public.enforce_school_structure_delete_owner();
+drop trigger if exists classrooms_delete_owner_guard on public.classrooms;
+create trigger classrooms_delete_owner_guard before update or delete on public.classrooms for each row execute function public.enforce_school_structure_delete_owner();
 
 -- Add is_special for existing deployments
 alter table public.test_results add column if not exists is_special boolean not null default false;

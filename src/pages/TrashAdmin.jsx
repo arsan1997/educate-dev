@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {Trash2, RotateCcw, X} from 'lucide-react';
+import {Trash2, RotateCcw, RefreshCw, X} from 'lucide-react';
 import {loadDeletedSchools, restoreSchool, loadDeletedClassrooms, restoreClassroom, loadDeletedSessions, restoreSession, hardDeleteSchool, hardDeleteClassroom, hardDeleteSession, loadDeletedOnsiteEvaluations, restoreOnsiteEvaluation, hardDeleteOnsiteEvaluation} from '../dataService';
 
 function TrashAdmin({flash, setConfirming}) {
@@ -16,6 +16,8 @@ function TrashAdmin({flash, setConfirming}) {
     const d = new Date(isoString);
     return d.toLocaleDateString('th-TH', {year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'});
   };
+
+  const renderDeletedBy = item => item.deletedByName ? <div><b>{item.deletedByName}</b>{item.deletedByEmail&&item.deletedByEmail!==item.deletedByName&&<><br/><small style={{color:'var(--muted)'}}>{item.deletedByEmail}</small></>}</div> : <small style={{color:'var(--muted)'}}>ไม่ทราบผู้ลบ</small>;
 
   const refresh = async () => {
     setLoading(true);
@@ -88,16 +90,18 @@ function TrashAdmin({flash, setConfirming}) {
             <th>ชื่อโรงเรียน</th>
             <th>ปีการศึกษา</th>
             <th>เทอม</th>
+            <th>ผู้ลบ</th>
             <th>วันที่ลบ (ล่าสุด)</th>
             <th>จัดการ</th>
           </tr>
         </thead>
         <tbody>
-          {deletedSchools.filter(s=>!search.trim() || s.name.toLowerCase().includes(search.toLowerCase())).map(s => (
+          {deletedSchools.filter(s=>!search.trim() || s.name.toLowerCase().includes(search.toLowerCase()) || (s.deletedByName||'').toLowerCase().includes(search.toLowerCase()) || (s.deletedByEmail||'').toLowerCase().includes(search.toLowerCase())).map(s => (
             <tr key={s.id}>
               <td><b>{s.name}</b></td>
               <td>{s.year || '-'}</td>
               <td>{s.term || '-'}</td>
+              <td>{renderDeletedBy(s)}</td>
               <td><small style={{color:'var(--muted)'}}>{formatDate(s.deletedAt)}</small></td>
               <td style={{display:'flex', gap:'8px'}}>
                 <button className="button" style={{padding:'4px 8px'}} onClick={() => handleRestore('school', s.id, s.name)} title="กู้คืนข้อมูล"><RotateCcw size={16} /> กู้คืน</button>
@@ -118,15 +122,17 @@ function TrashAdmin({flash, setConfirming}) {
           <tr>
             <th>ชื่อชั้นเรียน</th>
             <th>โรงเรียน</th>
+            <th>ผู้ลบ</th>
             <th>วันที่ลบ (ล่าสุด)</th>
             <th>จัดการ</th>
           </tr>
         </thead>
         <tbody>
-          {deletedClassrooms.filter(s=>!search.trim() || s.name.toLowerCase().includes(search.toLowerCase()) || (s.schoolName||'').toLowerCase().includes(search.toLowerCase())).map(s => (
+          {deletedClassrooms.filter(s=>!search.trim() || s.name.toLowerCase().includes(search.toLowerCase()) || (s.schoolName||'').toLowerCase().includes(search.toLowerCase()) || (s.deletedByName||'').toLowerCase().includes(search.toLowerCase()) || (s.deletedByEmail||'').toLowerCase().includes(search.toLowerCase())).map(s => (
             <tr key={s.id}>
               <td><b>{s.name}</b></td>
               <td>{s.schoolName || '-'}</td>
+              <td>{renderDeletedBy(s)}</td>
               <td><small style={{color:'var(--muted)'}}>{formatDate(s.deletedAt)}</small></td>
               <td style={{display:'flex', gap:'8px'}}>
                 <button className="button" style={{padding:'4px 8px'}} onClick={() => handleRestore('classroom', s.id, s.name)} title="กู้คืนข้อมูล"><RotateCcw size={16} /> กู้คืน</button>
@@ -148,16 +154,18 @@ function TrashAdmin({flash, setConfirming}) {
             <th>รอบการสอบ</th>
             <th>ชั้นเรียน</th>
             <th>โรงเรียน</th>
+            <th>ผู้ลบ</th>
             <th>วันที่ลบ (ล่าสุด)</th>
             <th>จัดการ</th>
           </tr>
         </thead>
         <tbody>
-          {deletedSessions.filter(s=>!search.trim() || s.name.toLowerCase().includes(search.toLowerCase()) || (s.className||'').toLowerCase().includes(search.toLowerCase()) || (s.schoolName||'').toLowerCase().includes(search.toLowerCase())).map(s => (
+          {deletedSessions.filter(s=>!search.trim() || s.name.toLowerCase().includes(search.toLowerCase()) || (s.className||'').toLowerCase().includes(search.toLowerCase()) || (s.schoolName||'').toLowerCase().includes(search.toLowerCase()) || (s.deletedByName||'').toLowerCase().includes(search.toLowerCase()) || (s.deletedByEmail||'').toLowerCase().includes(search.toLowerCase())).map(s => (
             <tr key={s.id}>
               <td><b>{s.name}</b></td>
               <td>{s.className || '-'}</td>
               <td>{s.schoolName || '-'}</td>
+              <td>{renderDeletedBy(s)}</td>
               <td><small style={{color:'var(--muted)'}}>{formatDate(s.deletedAt)}</small></td>
               <td style={{display:'flex', gap:'8px'}}>
                 <button className="button" style={{padding:'4px 8px'}} onClick={() => handleRestore('session', s.id, s.name)} title="กู้คืนข้อมูล"><RotateCcw size={16} /> กู้คืน</button>
@@ -180,17 +188,19 @@ function TrashAdmin({flash, setConfirming}) {
             <th>วิทยากร</th>
             <th>ชั้นเรียน</th>
             <th>โรงเรียน</th>
+            <th>ผู้ลบ</th>
             <th>วันที่ลบ (ล่าสุด)</th>
             <th>จัดการ</th>
           </tr>
         </thead>
         <tbody>
-          {deletedOnsite.filter(s=>!search.trim() || (s.trainer||'').toLowerCase().includes(search.toLowerCase()) || (s.className||'').toLowerCase().includes(search.toLowerCase())).map(s => (
+          {deletedOnsite.filter(s=>!search.trim() || (s.trainer||'').toLowerCase().includes(search.toLowerCase()) || (s.className||'').toLowerCase().includes(search.toLowerCase()) || (s.schoolName||'').toLowerCase().includes(search.toLowerCase()) || (s.deletedByName||'').toLowerCase().includes(search.toLowerCase()) || (s.deletedByEmail||'').toLowerCase().includes(search.toLowerCase())).map(s => (
             <tr key={s.id}>
               <td><b>{s.date ? new Date(s.date).toLocaleDateString('th-TH', {year: 'numeric', month: 'short', day: 'numeric'}) : '-'}</b></td>
               <td>{s.trainer || '-'}</td>
               <td>{s.className || '-'}</td>
               <td>{s.schoolName || '-'}</td>
+              <td>{renderDeletedBy(s)}</td>
               <td><small style={{color:'var(--muted)'}}>{formatDate(s.deletedAt)}</small></td>
               <td style={{display:'flex', gap:'8px'}}>
                 <button className="button" style={{padding:'4px 8px'}} onClick={() => handleRestore('onsite', s.id, `ใบปะหน้าห้อง ${s.className || 'ไม่ระบุ'}`)} title="กู้คืนข้อมูล"><RotateCcw size={16} /> กู้คืน</button>
@@ -228,8 +238,9 @@ function TrashAdmin({flash, setConfirming}) {
             <button className={`button ${view==='session'?'primary':''}`} onClick={()=>setView('session')}>รอบการทดสอบ</button>
             <button className={`button ${view==='onsite'?'primary':''}`} onClick={()=>setView('onsite')}>ใบปะหน้าหน้างาน</button>
           </div>
-          <div style={{position:'relative', width:'300px', maxWidth:'100%'}}>
-            <input type="text" placeholder="ค้นหาชื่อ..." value={search} onChange={e=>setSearch(e.target.value)} style={{width:'100%', padding:'10px 15px', borderRadius:'8px', border:'1px solid var(--border)', background:'var(--bg)'}}/>
+          <div style={{display:'flex',gap:'8px',width:'380px',maxWidth:'100%'}}>
+            <input type="text" placeholder="ค้นหาชื่อหรือผู้ลบ..." value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1,minWidth:0,padding:'10px 15px',borderRadius:'8px',border:'1px solid var(--border)',background:'var(--bg)'}}/>
+            <button type="button" className="button" onClick={refresh} disabled={loading} title="โหลดข้อมูลถังขยะใหม่"><RefreshCw size={16}/>รีเฟรช</button>
           </div>
         </div>
         
