@@ -1067,6 +1067,7 @@ function App({user,profile,onSignOut}){
   orderedClassrooms.forEach((classroom,classIndex)=>{
    if(classIndex>0)doc.addPage();
    addHeader(classroom.name);
+    const classroomFirstPage=doc.internal.getCurrentPageInfo().pageNumber;
    const roomSessions=Array.from({length:4},(_,index)=>sessionAt(classroom,index));
    const students=classroom.students.filter(st=>st.active!==false||roomSessions.some(sess=>sess?.entries?.[st.id]));
    const rankMaps=roomSessions.map(sess=>sess?calcRanks(students.map(st=>({...st,...(sess.entries?.[st.id]||{})}))):{});
@@ -1115,6 +1116,8 @@ function App({user,profile,onSignOut}){
       }
     }
    });
+   const classroomLastPage=doc.internal.getCurrentPageInfo().pageNumber;
+   doc.setPage(classroomFirstPage);
    const summaryRows=roomSessions.map((sess,index)=>{
     if(!sess)return [`ครั้งที่ ${index+1}`,'','','','',''];
     const stats=sessionStats(classroom,sess);
@@ -1138,6 +1141,7 @@ function App({user,profile,onSignOut}){
    doc.text('0 คือนักเรียนที่ทำข้อสอบไม่ได้เลย',252,92);
    doc.text('X คือนักเรียนที่ไม่ได้เข้าสอบ',252,99);
    doc.text('35 คะแนนขึ้นไป ผ่านเกณฑ์',252,106);
+   doc.setPage(classroomLastPage);
   });
 
   for(let startIndex=0;startIndex<4;startIndex+=2){
