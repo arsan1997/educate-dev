@@ -4,7 +4,7 @@ import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-
 import {Sun, Moon, LayoutDashboard, Users, ClipboardPenLine, ClipboardCheck, FileText, Upload, Plus, Save, Download, ChevronDown, ChevronLeft, School, Bot, CheckCircle2, AlertCircle, X, LogOut, Cloud, CloudOff, Edit2, ShieldCheck, Clock3, Eye, UserMinus, RotateCcw, FileCog, Trash2, MapPin, Warehouse} from 'lucide-react';
 import {sampleSchool,parseSchoolWorkbook,calcStats,calcRanks,ROBOT_TYPES,compareClassNames,defaultExamForRobot,examOptionsForRobot} from './model';
 import {supabase,isSupabaseConfigured} from './supabase';
-import {loadSchoolIndex,loadSchoolDetail,loadClassroomDetail,loadDashboardInsights,saveSchoolMeta,saveSessionRows,saveClassroomStudents,saveClassroomMeta,saveResultRows,saveSchoolBundle,deleteSchool,deleteStudent,loadCurrentProfile,loadAccessAdmin,updateUserAccess,saveStudentOrder,loadOffices,createOffice,deleteOffice,loadAllProfiles,saveSchools,deleteClassroom,deleteSession,acquireLock,verifyLockOwnership,searchSchoolStudents} from './dataService';
+import {loadSchoolIndex,loadSchoolDetail,loadClassroomDetail,loadDashboardInsights,saveSchoolMeta,renameSchool,saveSessionRows,saveClassroomStudents,saveClassroomMeta,saveResultRows,saveSchoolBundle,deleteSchool,deleteStudent,loadCurrentProfile,loadAccessAdmin,updateUserAccess,saveStudentOrder,loadOffices,createOffice,deleteOffice,loadAllProfiles,saveSchools,deleteClassroom,deleteSession,acquireLock,verifyLockOwnership,searchSchoolStudents} from './dataService';
 import brandLogo from './assets/logo.png';
 import './styles.css';
 import './dynamic.css';
@@ -14,6 +14,7 @@ import AddSchoolModal from './components/modals/AddSchoolModal';
 import ImportOfficeModal from './components/modals/ImportOfficeModal';
 import PDFPreviewModal from './components/ui/PDFPreviewModal';
 import ReportPDFModal from './components/ui/ReportPDFModal';
+import ScoreTablePDFModal from './components/ui/ScoreTablePDFModal';
 import Select from './components/ui/Select';
 import Field from './components/ui/Field';
 import './index.css';
@@ -87,7 +88,7 @@ function App({user,profile,onSignOut}){
   const [offices,setOffices]=useState([]);
   const [userProfiles,setUserProfiles]=useState({});
   const [schoolId,setSchoolId]=useState(''),[classId,setClassId]=useState(''),[sessionId,setSessionId]=useState('');
-  const [confirming,setConfirming]=useState(null),[schoolAdding,setSchoolAdding]=useState(false),[pendingImport,setPendingImport]=useState(null),[pdfPreview,setPdfPreview]=useState(null),[pdfEditor,setPdfEditor]=useState(null),[reportPDFSelection,setReportPDFSelection]=useState(null),[scoreSaveBlocked,setScoreSaveBlocked]=useState(null),[retryingScoreLock,setRetryingScoreLock]=useState(false);
+  const [confirming,setConfirming]=useState(null),[schoolAdding,setSchoolAdding]=useState(false),[pendingImport,setPendingImport]=useState(null),[pdfPreview,setPdfPreview]=useState(null),[pdfEditor,setPdfEditor]=useState(null),[reportPDFSelection,setReportPDFSelection]=useState(null),[scoreTablePDFSelection,setScoreTablePDFSelection]=useState(null),[scoreSaveBlocked,setScoreSaveBlocked]=useState(null),[retryingScoreLock,setRetryingScoreLock]=useState(false);
   const pdfSettings={scale:1};
   const isSuperOwner = user.email === 'arsan113@gmail.com';
   const tabs=baseTabs;
@@ -119,11 +120,13 @@ function App({user,profile,onSignOut}){
     return()=>document.removeEventListener('wheel',blurNumberInputOnWheel,{capture:true});
   },[]);
   const dashboardRows=(school?.classrooms||[]).map(c=>{
-    const latest=school.sessions.filter(s=>s.classId===c.id).at(-1),
+    const classroomSessions=(school.sessions||[]).filter(s=>s.classId===c.id).sort((a,b)=>sessionTestNumber(a.test)-sessionTestNumber(b.test)||String(a.date||'').localeCompare(String(b.date||''))||String(a.id).localeCompare(String(b.id))),
+    latest=classroomSessions.at(-1),
     merged=c.students.filter(st=>st.active!==false||latest?.entries?.[st.id]).map(st=>({...st,...(latest?.entries?.[st.id]||{})})),
     x=calcStats(merged);
     const scored=merged.filter(st=>!st.absent&&st.score!==''&&st.score!=null&&Number.isFinite(Number(st.score)));
     return {
+      id:c.id,
       name:c.name,
       students:merged.length,
       passed:scored.filter(st=>Number(st.score)>=35).length,
@@ -132,7 +135,17 @@ function App({user,profile,onSignOut}){
       pending:merged.length-scored.length-merged.filter(st=>st.absent).length,
       avg:x.avg,
       pass:x.rate,
-      tests:school.sessions.filter(s=>s.classId===c.id).length,
+      tests:classroomSessions.length,
+      sessions:classroomSessions.map(item=>({
+       id:item.id,
+       test:item.test,
+       testNumber:sessionTestNumber(item.test),
+       date:item.date||'',
+       endDate:item.endDate||'',
+       robot:item.robot||'',
+       exam:item.exam||'',
+       resultCount:Object.values(item.entries||{}).filter(entry=>entry?.absent||entry?.is_special||entry?.score!==''&&entry?.score!=null||entry?.time).length
+      })),
       feedback: latest?.feedback || { detail: '', summary: '' }
     }
   });
@@ -486,6 +499,30 @@ function App({user,profile,onSignOut}){
     flash(`แก้เป็น ${nextName} แล้ว กำลังบันทึกอัตโนมัติ`);
   };
   const setMeta=next=>{if(!school||scoreEntryBlocked)return;const endDate=next.endDate&&next.endDate===next.date?'':next.endDate;markSchool(school.id);if(session)markSession(session.id);if(classroom&&next.level!==classroom.name)markClassroom(classroom.id);mutateSchool(s=>({...s,name:next.school,year:next.year,term:next.term,officeId:next.officeId||'',classrooms:s.classrooms.map(c=>c.id===classId?{...c,name:next.level}:c),sessions:s.sessions.map(x=>x.id===session?.id?{...x,test:next.test,date:next.date,endDate,robot:next.robot,exam:next.exam,teachingPeriod:next.teachingPeriod,trainer:next.trainer,term:next.sessionTerm,year:next.sessionYear}:x)}))};
+  const renameSelectedSchool=async (targetSchoolId,nextName)=>{
+   const target=schools.find(item=>String(item.id)===String(targetSchoolId));
+   if(!target)throw new Error('ไม่พบโรงเรียนที่ต้องการเปลี่ยนชื่อ');
+   const normalizedName=String(nextName||'').trim().replace(/\s+/g,' ');
+   if(!normalizedName)throw new Error('กรุณาระบุชื่อโรงเรียนใหม่');
+   const nextIdentity=schoolIdentity({...target,name:normalizedName});
+   const duplicate=schools.find(item=>item.id!==target.id&&schoolIdentity(item)===nextIdentity);
+   if(duplicate)throw new Error(`มีโรงเรียนชื่อ ${duplicate.name} ในปีการศึกษาและภาคเรียนเดียวกันแล้ว`);
+   if(normalizedName===target.name)return target.name;
+   try{
+    if(hasDirty())await flushChanges();
+    setCloudStatus('saving');
+    const updated=await renameSchool(target.id,target.name,normalizedName);
+    setSchools(all=>all.map(item=>item.id===target.id?{...item,name:updated.name}:item));
+    setCloudStatus('saved');
+    flash(`เปลี่ยนชื่อโรงเรียนเป็น ${updated.name} เรียบร้อยแล้ว`);
+    return updated.name;
+   }catch(error){
+    console.error(error);
+    setCloudStatus('error');
+    if(error.code==='23505')throw new Error('มีโรงเรียนชื่อนี้ในปีการศึกษาและภาคเรียนเดียวกันแล้ว');
+    throw error;
+   }
+  };
   const setFeedback=next=>{if(!session||scoreEntryBlocked)return;markSession(session.id);mutateSchool(s=>({...s,sessions:s.sessions.map(x=>x.id===session.id?{...x,feedback:next}:x)}))};
   const update=(id,key,val)=>{if(!session||scoreEntryBlocked)return;markResult(session.id,id);mutateSchool(s=>({...s,sessions:s.sessions.map(x=>x.id===session.id?{...x,entries:{...x.entries,[id]:{...x.entries[id],[key]:val,updatedBy:user.id}}}:x)}))};
   const resetCurrentSession = () => {
@@ -925,8 +962,14 @@ function App({user,profile,onSignOut}){
 
  const exportScoreTablePDF=async(mode='download',overrides={})=>{
  if(readOnly){flash('บัญชีดูอย่างเดียวไม่สามารถสร้าง PDF ได้');return}
- if(!school)return;
-  const duplicateSessionGroups=Array.from((school.sessions||[]).filter(item=>item.classId).reduce((groups,item)=>{
+ const scoreTableSchool=overrides.school||school;
+ if(!scoreTableSchool)return;
+ const scoreTableClassrooms=overrides.scope==='classroom'
+  ?(scoreTableSchool.classrooms||[]).filter(item=>String(item.id)===String(overrides.classroomId))
+  :(scoreTableSchool.classrooms||[]);
+ if(!scoreTableClassrooms.length){flash('กรุณาเลือกชั้นเรียนก่อนสร้าง PDF');return}
+ const scoreTableClassroomIds=new Set(scoreTableClassrooms.map(item=>String(item.id)));
+  const duplicateSessionGroups=Array.from((scoreTableSchool.sessions||[]).filter(item=>item.classId&&scoreTableClassroomIds.has(String(item.classId))).reduce((groups,item)=>{
    const key=`${item.classId}:${sessionTestNumber(item.test)}`;
    if(!groups.has(key))groups.set(key,[]);
    groups.get(key).push(item);
@@ -934,7 +977,7 @@ function App({user,profile,onSignOut}){
   },new Map()).values()).filter(group=>group.length>1);
   if(duplicateSessionGroups.length){
    const duplicateSummary=duplicateSessionGroups.map(group=>{
-    const classroomName=school.classrooms.find(item=>item.id===group[0].classId)?.name||'ไม่ทราบห้อง';
+    const classroomName=scoreTableSchool.classrooms.find(item=>item.id===group[0].classId)?.name||'ไม่ทราบห้อง';
     return `${classroomName} · ครั้งที่ ${sessionTestNumber(group[0].test)} (${group.length} รายการ)`;
    }).join(', ');
    await themeSwal.fire({
@@ -996,15 +1039,15 @@ function App({user,profile,onSignOut}){
   };
 
   const pageWidth=doc.internal.pageSize.getWidth();
-  const rawSchoolName=String(overrides.schoolName??school.name??'').trim();
+  const rawSchoolName=String(overrides.schoolName??scoreTableSchool.name??'').trim();
   const fileSchoolName=/^โรงเรียน/.test(rawSchoolName)?rawSchoolName:`โรงเรียน${rawSchoolName}`;
-  const sessionTerms=[...new Set((school.sessions||[]).map(s=>String(s.term||'').trim()).filter(Boolean))]
+  const sessionTerms=[...new Set((scoreTableSchool.sessions||[]).filter(s=>scoreTableClassroomIds.has(String(s.classId))).map(s=>String(s.term||'').trim()).filter(Boolean))]
    .sort((a,b)=>Number(a)-Number(b)||a.localeCompare(b,'th'));
-  const hasSecondOrLater=(school.sessions||[]).some(s=>sessionHasRecordedResult(s)&&sessionTestNumber(s.test)>=2);
-  let defaultTerm=sessionTerms.length>1?`${sessionTerms[0]}-${sessionTerms.at(-1)}`:sessionTerms[0]||String(school.term||'').trim();
+  const hasSecondOrLater=(scoreTableSchool.sessions||[]).some(s=>scoreTableClassroomIds.has(String(s.classId))&&sessionHasRecordedResult(s)&&sessionTestNumber(s.test)>=2);
+  let defaultTerm=sessionTerms.length>1?`${sessionTerms[0]}-${sessionTerms.at(-1)}`:sessionTerms[0]||String(scoreTableSchool.term||'').trim();
   if(hasSecondOrLater&&defaultTerm==='1')defaultTerm='1-2';
   const term=String(overrides.term??defaultTerm).trim()||defaultTerm;
-  const year=String(overrides.year??school.year??'').trim();
+  const year=String(overrides.year??scoreTableSchool.year??'').trim();
   const sessionColors=[[141,179,226],[230,184,183],[196,216,160],[196,183,215]];
   const softGreen=[234,241,222],softOrange=[252,228,214],softCream=[252,244,235],lineColor=[0,0,0];
   const monthNames=['','มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
@@ -1012,8 +1055,8 @@ function App({user,profile,onSignOut}){
   const thaiDate=value=>{const [y,m,d]=dateParts(value);return y&&m&&d?`${d}/${m}/${y+543}`:''};
   const thaiDateLong=value=>{const [y,m,d]=dateParts(value);return y&&m&&d?`${String(d).padStart(2,'0')} ${monthNames[m]} ${y+543}`:''};
    const dateRange=(start,end)=>end&&end!==start?`${thaiDate(start)}-${thaiDate(end)}`:thaiDate(start);
-  const orderedClassrooms=[...(school.classrooms||[])].sort((a,b)=>compareClassNames(a.name,b.name));
-  const orderedSessions=classroom=>[...(school.sessions||[])]
+  const orderedClassrooms=[...scoreTableClassrooms].sort((a,b)=>compareClassNames(a.name,b.name));
+  const orderedSessions=classroom=>[...(scoreTableSchool.sessions||[])]
    .filter(s=>s.classId===classroom.id)
    .sort((a,b)=>sessionTestNumber(a.test)-sessionTestNumber(b.test)||String(a.test).localeCompare(String(b.test),'th'));
    const sessionAt=(classroom,index)=>{
@@ -1183,7 +1226,8 @@ function App({user,profile,onSignOut}){
    });
   }
 
-  const filename=`ตารางคะแนนทดสอบ ${fileSchoolName}.pdf`;
+  const classroomFileSuffix=orderedClassrooms.length===1?` ชั้น ${String(orderedClassrooms[0].name||'').replace(/[\\/:*?"<>|]/g,'-')}`:'';
+  const filename=`ตารางคะแนนทดสอบ ${fileSchoolName}${classroomFileSuffix}.pdf`;
   if(mode==='preview'){
    const url=URL.createObjectURL(doc.output('blob'));
    flash('สร้างตัวอย่าง PDF ตารางคะแนนเรียบร้อยแล้ว');
@@ -1572,7 +1616,30 @@ function App({user,profile,onSignOut}){
   const downloadSelectedScoreReport=async selection=>{
    try{await exportPDF('download',selection)}catch(error){console.error('Selected report PDF download failed',error);flash(`ดาวน์โหลด PDF ไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`);throw error}
   };
-  const openScoreTablePDFPreview=async()=>{try{const preview=await exportScoreTablePDF('preview');if(preview)setPdfPreview(preview)}catch(error){console.error('Score table PDF preview failed',error);flash(`สร้าง PDF ตารางคะแนนไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`)}};
+  const openScoreTablePDFSelector=async(defaultScope='all')=>{
+   if(readOnly){flash('บัญชีดูอย่างเดียวไม่สามารถสร้าง PDF ได้');return}
+   if(!school){flash('กรุณาเลือกโรงเรียนก่อนสร้าง PDF');return}
+   try{
+    let reportSchool=school;
+    if(!reportSchool.loaded){
+     flash('กำลังโหลดข้อมูลทุกห้องสำหรับตารางคะแนน...');
+     reportSchool=await loadSchoolDetail(reportSchool.id);
+     setSchools(current=>current.map(item=>item.id===reportSchool.id?reportSchool:item));
+    }
+    if(!(reportSchool.classrooms||[]).length){flash('โรงเรียนนี้ยังไม่มีชั้นเรียนสำหรับสร้าง PDF');return}
+    const selectedClassroom=reportSchool.classrooms.find(item=>String(item.id)===String(classroom?.id))||reportSchool.classrooms[0];
+    setScoreTablePDFSelection({school:reportSchool,classrooms:reportSchool.classrooms,classroomId:selectedClassroom?.id||'',classroomName:selectedClassroom?.name||'',scope:defaultScope});
+   }catch(error){
+    console.error('Score table PDF data load failed',error);
+    flash(`โหลดข้อมูลสำหรับตารางคะแนนไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`);
+   }
+  };
+  const previewSelectedScoreTablePDF=async selection=>{
+   try{const preview=await exportScoreTablePDF('preview',selection);if(preview)setPdfPreview(preview)}catch(error){console.error('Score table PDF preview failed',error);flash(`สร้าง PDF ตารางคะแนนไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`);throw error}
+  };
+  const downloadSelectedScoreTablePDF=async selection=>{
+   try{await exportScoreTablePDF('download',selection)}catch(error){console.error('Score table PDF download failed',error);flash(`ดาวน์โหลด PDF ตารางคะแนนไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`);throw error}
+  };
  useEffect(()=>()=>{if(pdfPreview?.url)URL.revokeObjectURL(pdfPreview.url)},[pdfPreview?.url]);
 
   const removeSchool=async id=>{setConfirming({title:`ยืนยันการลบ ${school.name}`,message:'คุณแน่ใจหรือไม่? ข้อมูลทั้งหมดจะถูกลบทิ้ง',dangerLabel:'ลบโรงเรียน',onConfirm:async()=>{try{await deleteSchool(id);setSchools(all=>all.filter(s=>s.id!==id));setSchool(null);setClassroom(null);setSessionId(null);flash(`ลบโรงเรียน ${school.name} แล้ว`)}catch(e){console.error(e);flash(`ลบไม่สำเร็จ: ${e.message}`)}}})};
@@ -1645,11 +1712,11 @@ function App({user,profile,onSignOut}){
          <Route path="/onsite" element={<OnsiteDashboard flash={flash} offices={offices} />} />
          <Route path="/evaluate" element={<EvaluateForm />} />
          <Route path="/stock" element={<StockPage schools={schools} offices={offices} user={user} profile={profile} flash={flash}/>} />
-            <Route path="/scores" element={<ScorePage meta={scoreMeta} setMeta={setMeta} students={scoreStudents} update={update} move={move} refs={refs} feedback={scoreFeedback} setFeedback={setFeedback} stats={scoreStats} flash={flash} schools={schools} offices={offices} schoolId={schoolId||''} classId={classId||''} classrooms={scoreSchool?.classrooms||[]} onSelectSchool={selectSchool} onSelectClass={selectClass} onSearchStudents={searchStudentsInSchool} sessions={scoreClassSessions} sessionId={scoreSession?.id} onSelectSession={id=>guardNavigation(()=>setSessionId(id))} onAddSession={addSession} onEditSession={editSession} onDeleteSession={removeSession} onRefreshClassroom={refreshClassroom} isRefreshingRoom={roomRefreshing} onOpenReportPDF={openScoreReportSelector} onPreviewScoreTablePDF={openScoreTablePDFPreview} onSave={flushChanges} onResetSession={resetCurrentSession} saveBlocked={scoreEntryBlocked} blockedBy={scoreSaveBlocked?.lockedBy||''} retryingSaveLock={retryingScoreLock} onRetrySaveLock={retryScoreSaveLock} onReloadAfterLock={()=>window.location.reload()} userProfiles={userProfiles} user={user}/>} />
+            <Route path="/scores" element={<ScorePage meta={scoreMeta} setMeta={setMeta} students={scoreStudents} update={update} move={move} refs={refs} feedback={scoreFeedback} setFeedback={setFeedback} stats={scoreStats} flash={flash} schools={schools} offices={offices} schoolId={schoolId||''} classId={classId||''} classrooms={scoreSchool?.classrooms||[]} onSelectSchool={selectSchool} onSelectClass={selectClass} onSearchStudents={searchStudentsInSchool} sessions={scoreClassSessions} sessionId={scoreSession?.id} onSelectSession={id=>guardNavigation(()=>setSessionId(id))} onAddSession={addSession} onEditSession={editSession} onDeleteSession={removeSession} onRefreshClassroom={refreshClassroom} isRefreshingRoom={roomRefreshing} onOpenReportPDF={openScoreReportSelector} onPreviewScoreTablePDF={()=>openScoreTablePDFSelector('classroom')} onSave={flushChanges} onResetSession={resetCurrentSession} saveBlocked={scoreEntryBlocked} blockedBy={scoreSaveBlocked?.lockedBy||''} retryingSaveLock={retryingScoreLock} onRetrySaveLock={retryScoreSaveLock} onReloadAfterLock={()=>window.location.reload()} userProfiles={userProfiles} user={user}/>} />
           <Route path="/score-status" element={<ScoreStatus offices={offices}/>} />
-          <Route path="/classroom" element={<Classroom {...{meta,setMeta,setStudents,importExcel,importBulkExcel,flash,offices,user,userProfiles,readOnly}} students={classroomStudents} schools={schools} school={school} classroom={classroom} onAddSchool={()=>setSchoolAdding(true)} onAddOffice={addOffice} onDeleteOffice={removeOffice} onSelectSchool={selectSchool} onSelectClass={selectClass} onDeleteStudent={removeStudent} onDeleteSchool={id=>setConfirming({message:'ยืนยันการลบโรงเรียนนี้? ข้อมูลทั้งหมดจะถูกย้ายไปที่ถังขยะและจะไม่แสดงในหน้ารวม',onConfirm:async ()=>{try{setCloudStatus('saving');await deleteSchool(id);setSchools(all=>all.filter(s=>s.id!==id));const next=schools.find(s=>s.id!==id);if(next)selectSchoolAfter(next);else setSchoolId(null);flash('ลบโรงเรียนสำเร็จ (ย้ายไปถังขยะ)');setCloudStatus('saved')}catch(e){console.error(e);setCloudStatus('error');flash('ลบโรงเรียนไม่สำเร็จ')}}})} onDeleteClassroom={id=>setConfirming({title:'ยืนยันการลบชั้นเรียน',message:'คุณแน่ใจหรือไม่ว่าต้องการลบชั้นเรียนนี้? ข้อมูลนักเรียนและผลสอบทั้งหมดในชั้นเรียนนี้จะถูกลบทิ้งถาวร',dangerLabel:'ลบทิ้ง',onConfirm:async()=>{try{setCloudStatus('saving');await deleteClassroom(id);setSchools(all=>all.map(s=>s.id===school.id?{...s,classrooms:s.classrooms.filter(c=>c.id!==id),sessions:s.sessions.filter(x=>x.classId!==id)}:s));const nextClass=school.classrooms.find(c=>c.id!==id);if(nextClass)selectClassNow(nextClass.id);else{navigate('/');selectSchoolNow(school.id);}flash('ลบชั้นเรียนสำเร็จ');setCloudStatus('saved')}catch(e){console.error(e);setCloudStatus('error');flash(`ลบชั้นเรียนไม่สำเร็จ: ${e.message}`)}}})}/>} />
+          <Route path="/classroom" element={<Classroom {...{meta,setMeta,setStudents,importExcel,importBulkExcel,flash,offices,user,userProfiles,readOnly}} students={classroomStudents} schools={schools} school={school} classroom={classroom} onAddSchool={()=>setSchoolAdding(true)} onAddOffice={addOffice} onDeleteOffice={removeOffice} onRenameSchool={renameSelectedSchool} onSelectSchool={selectSchool} onSelectClass={selectClass} onDeleteStudent={removeStudent} onDeleteSchool={id=>setConfirming({message:'ยืนยันการลบโรงเรียนนี้? ข้อมูลทั้งหมดจะถูกย้ายไปที่ถังขยะและจะไม่แสดงในหน้ารวม',onConfirm:async ()=>{try{setCloudStatus('saving');await deleteSchool(id);setSchools(all=>all.filter(s=>s.id!==id));const next=schools.find(s=>s.id!==id);if(next)selectSchoolAfter(next);else setSchoolId(null);flash('ลบโรงเรียนสำเร็จ (ย้ายไปถังขยะ)');setCloudStatus('saved')}catch(e){console.error(e);setCloudStatus('error');flash('ลบโรงเรียนไม่สำเร็จ')}}})} onDeleteClassroom={id=>setConfirming({title:'ยืนยันการลบชั้นเรียน',message:'คุณแน่ใจหรือไม่ว่าต้องการลบชั้นเรียนนี้? ข้อมูลนักเรียนและผลสอบทั้งหมดในชั้นเรียนนี้จะถูกลบทิ้งถาวร',dangerLabel:'ลบทิ้ง',onConfirm:async()=>{try{setCloudStatus('saving');await deleteClassroom(id);setSchools(all=>all.map(s=>s.id===school.id?{...s,classrooms:s.classrooms.filter(c=>c.id!==id),sessions:s.sessions.filter(x=>x.classId!==id)}:s));const nextClass=school.classrooms.find(c=>c.id!==id);if(nextClass)selectClassNow(nextClass.id);else{navigate('/');selectSchoolNow(school.id);}flash('ลบชั้นเรียนสำเร็จ');setCloudStatus('saved')}catch(e){console.error(e);setCloudStatus('error');flash(`ลบชั้นเรียนไม่สำเร็จ: ${e.message}`)}}})}/>} />
          <Route path="/debug" element={<DebugEvals />} />
-          <Route path="/reports" element={<Reports {...{stats,exportExcel,exportAllExcelZip,exportPDF,exportScoreTablePDF}} onPreviewPDF={openPDFPreview} onPreviewScoreTablePDF={openScoreTablePDFPreview} schools={schools} schoolId={school?.id||''} onSelectSchool={selectSchool}/>} />
+          <Route path="/reports" element={<Reports {...{stats,exportExcel,exportAllExcelZip,exportPDF}} onPreviewPDF={openPDFPreview} onOpenScoreTablePDF={()=>openScoreTablePDFSelector('all')} schools={schools} schoolId={school?.id||''} onSelectSchool={selectSchool}/>} />
          <Route path="/dataprep" element={<DataPrep />} />
          <Route path="*" element={<Navigate to="/" />} />
        </Routes>
@@ -1666,6 +1733,7 @@ function App({user,profile,onSignOut}){
   {schoolAdding && <AddSchoolModal onClose={()=>setSchoolAdding(false)} onAdd={addSchool} offices={offices} onAddOffice={addOffice}/>}
    {pendingImport&&<ImportOfficeModal school={pendingImport} schools={schools} offices={offices} onAddOffice={addOffice} onClose={()=>setPendingImport(null)} onConfirm={async imported=>{const ready={...imported,loaded:true};try{setCloudStatus('saving');await saveSchoolBundle(ready,user.id);setSchools(v=>v.some(x=>x.id===ready.id)?v.map(x=>x.id===ready.id?ready:x):[...v,ready]);setPendingImport(null);selectSchoolAfter(ready);setCloudStatus('saved');flash(`นำเข้าสำเร็จ: ${ready.classrooms.length} ห้อง`)}catch(error){console.error(error);setCloudStatus('error');flash(`นำเข้าไม่สำเร็จ: ${error.message}`)}}}/>}
    {reportPDFSelection&&<ReportPDFModal initialSelection={reportPDFSelection} onClose={()=>setReportPDFSelection(null)} onPreview={async selection=>{await previewSelectedScoreReport(selection);setReportPDFSelection(null)}} onDownload={downloadSelectedScoreReport}/>}
+   {scoreTablePDFSelection&&<ScoreTablePDFModal initialSelection={scoreTablePDFSelection} onClose={()=>setScoreTablePDFSelection(null)} onPreview={async selection=>{await previewSelectedScoreTablePDF(selection);setScoreTablePDFSelection(null)}} onDownload={downloadSelectedScoreTablePDF}/>}
    {pdfPreview&&<PDFPreviewModal preview={pdfPreview} onClose={()=>setPdfPreview(null)}/>}
  </>
 }

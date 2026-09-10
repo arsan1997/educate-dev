@@ -1,7 +1,7 @@
 import React, {useState, useRef, useEffect} from 'react';
 import {ChevronDown} from 'lucide-react';
 
-function Select({value,onChange,children,disabled=false}){
+function Select({value,onChange,children,disabled=false,dropUp=false}){
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
 
@@ -30,7 +30,7 @@ function Select({value,onChange,children,disabled=false}){
   const selectedOption = options.find(opt => String(opt.value) === String(value)) || options.find(opt => !opt.hidden);
 
   return (
-    <div className={`select-wrap custom-select ${isOpen ? 'open' : ''} ${disabled ? 'disabled' : ''}`} ref={containerRef}>
+    <div className={`select-wrap custom-select ${isOpen ? 'open' : ''} ${disabled ? 'disabled' : ''} ${dropUp ? 'drop-up' : ''}`} ref={containerRef}>
       <div 
         className="select-trigger" 
         onClick={(e) => { e.preventDefault(); if (!disabled) setIsOpen(!isOpen); }} 

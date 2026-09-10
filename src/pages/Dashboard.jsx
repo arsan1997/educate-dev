@@ -1,10 +1,15 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {Sun, Moon, LayoutDashboard, Users, ClipboardPenLine, FileText, Upload, Plus, Save, Download, ChevronDown, ChevronLeft, School, Bot, CheckCircle2, AlertCircle, X, LogOut, Cloud, CloudOff, Edit2, ShieldCheck, Clock3, Eye, UserMinus, RotateCcw, Trash2} from 'lucide-react';
+import {Sun, Moon, LayoutDashboard, Users, ClipboardPenLine, FileText, Upload, Plus, Save, Download, ChevronDown, ChevronLeft, School, Bot, CheckCircle2, AlertCircle, X, LogOut, Cloud, CloudOff, Edit2, ShieldCheck, Clock3, Eye, UserMinus, RotateCcw, Trash2, ExternalLink} from 'lucide-react';
 import {sampleSchool,parseSchoolWorkbook,calcStats,calcRanks,ROBOT_TYPES} from '../model';
 import {supabase,isSupabaseConfigured} from '../supabase';
 import {loadSchoolIndex,loadSchoolDetail,loadDashboardInsights,saveSchoolMeta,saveSessionRows,saveClassroomStudents,saveResultRows,saveSchoolBundle,deleteSchool,loadCurrentProfile,loadAccessAdmin,updateUserAccess,saveStudentOrder,loadOffices,createOffice} from '../dataService';
 import brandLogo from '../assets/logo.png';
 import Select from '../components/ui/Select';
+
+const thaiSessionDate=value=>{
+ const [year,month,day]=String(value||'').slice(0,10).split('-').map(Number);
+ return year&&month&&day?`${day}/${month}/${year+543}`:'ไม่ระบุวันที่';
+};
 
 function Dashboard({stats,classes,school,schools,offices,onSelectSchool,onDeleteOffice}){
  const summarizeSchool=s=>{if(s.summary)return s.summary;const results=s.classrooms.flatMap(c=>{const latest=s.sessions.filter(x=>x.classId===c.id).at(-1);return c.students.filter(st=>st.active!==false).map(st=>({...st,...(latest?.entries?.[st.id]||{})}))}),scored=results.filter(st=>!st.absent&&st.score!==''&&st.score!=null&&Number.isFinite(Number(st.score)));return {rooms:s.classrooms.length,students:results.length,scored:scored.length,passed:scored.filter(st=>Number(st.score)>=35).length,scoreTotal:scored.reduce((sum,st)=>sum+Number(st.score),0)}};
@@ -20,10 +25,11 @@ function Dashboard({stats,classes,school,schools,offices,onSelectSchool,onDelete
  const overallScoreTotal = overallSummaries.reduce((sum, x) => sum + x.scoreTotal, 0);
  const overallAvg = overallScored ? overallScoreTotal / overallScored : 0;
  const overallRate = overallScored ? overallPassed / overallScored * 100 : 0;
- const [selectedOfficeId,setSelectedOfficeId]=useState(null),[dashboardView,setDashboardView]=useState('offices');
+ const [selectedOfficeId,setSelectedOfficeId]=useState(null),[dashboardView,setDashboardView]=useState('offices'),[expandedClassroomId,setExpandedClassroomId]=useState(null);
  const [insightOffice,setInsightOffice]=useState(''),[insights,setInsights]=useState({attention:[],outstanding:[],roomsToImprove:[],recent:[]}),[insightLoading,setInsightLoading]=useState(true),[insightError,setInsightError]=useState('');
  useEffect(()=>{let active=true;setInsightLoading(true);setInsightError('');loadDashboardInsights(insightOffice||null,20).then(data=>{if(active)setInsights(data)}).catch(error=>{console.error(error);if(active)setInsightError('ยังไม่ได้ติดตั้งฟังก์ชันสรุป Dashboard กรุณารัน schema.sql ใน Supabase')}).finally(()=>{if(active)setInsightLoading(false)});return()=>{active=false}},[insightOffice]);
  useEffect(()=>{if(dashboardView!=='offices'){const officeId=school?.officeId||'unassigned';if(officeCards.some(x=>x.id===officeId))setSelectedOfficeId(officeId)}},[school?.id,dashboardView]);
+ useEffect(()=>setExpandedClassroomId(null),[school?.id]);
  const selectedOffice=officeCards.find(x=>x.id===selectedOfficeId);
  const openSchool=schoolId=>{const target=schools.find(item=>item.id===schoolId);setSelectedOfficeId(target?.officeId||'unassigned');onSelectSchool(schoolId);setDashboardView('school')};
   return <>
@@ -40,15 +46,31 @@ function Dashboard({stats,classes,school,schools,offices,onSelectSchool,onDelete
    <div className="card-head outcome-head"><div><b>จำนวนนักเรียนและผลสอบรายห้อง</b><small>อ้างอิงผลการทดสอบครั้งล่าสุด · ภาคเรียนที่ {school?.term}/{school?.year}</small></div><div className="outcome-legend"><span><i className="pass"/>ผ่าน</span><span><i className="fail"/>ไม่ผ่าน</span><span><i className="absent"/>ขาดสอบ</span><span><i className="pending"/>รอคะแนน</span></div></div>
    <div className="outcome-chart">{classes.map(c=>{
     const percent=value=>c.students?value/c.students*100:0;
-    return <div className="outcome-row" key={c.name}>
-     <div className="outcome-class"><b>{c.name}</b><small>{c.students} คน · ทดสอบ {c.tests} ครั้ง</small></div>
-     <div className="outcome-bar" aria-label={`${c.name} ผ่าน ${c.passed} ไม่ผ่าน ${c.failed} ขาดสอบ ${c.absent}`}>
-      {c.passed>0&&<i className="pass" style={{width:`${percent(c.passed)}%`}} title={`ผ่าน ${c.passed} คน`}>{c.passed}</i>}
-      {c.failed>0&&<i className="fail" style={{width:`${percent(c.failed)}%`}} title={`ไม่ผ่าน ${c.failed} คน`}>{c.failed}</i>}
-      {c.absent>0&&<i className="absent" style={{width:`${percent(c.absent)}%`}} title={`ขาดสอบ ${c.absent} คน`}>{c.absent}</i>}
-      {c.pending>0&&<i className="pending" style={{width:`${percent(c.pending)}%`}} title={`รอคะแนน ${c.pending} คน`}>{c.pending}</i>}
+    const latestSession=c.sessions?.at(-1)||null;
+    const expanded=expandedClassroomId===c.id;
+    return <div className={`outcome-room${expanded?' expanded':''}`} key={c.id||c.name}>
+     <div className="outcome-row">
+      <div className="outcome-class"><b>{c.name}</b><small>{c.students} คน · ทดสอบ {c.tests} ครั้ง</small></div>
+      <div className="outcome-bar" aria-label={`${c.name} ผ่าน ${c.passed} ไม่ผ่าน ${c.failed} ขาดสอบ ${c.absent}`}>
+       {c.passed>0&&<i className="pass" style={{width:`${percent(c.passed)}%`}} title={`ผ่าน ${c.passed} คน`}>{c.passed}</i>}
+       {c.failed>0&&<i className="fail" style={{width:`${percent(c.failed)}%`}} title={`ไม่ผ่าน ${c.failed} คน`}>{c.failed}</i>}
+       {c.absent>0&&<i className="absent" style={{width:`${percent(c.absent)}%`}} title={`ขาดสอบ ${c.absent} คน`}>{c.absent}</i>}
+       {c.pending>0&&<i className="pending" style={{width:`${percent(c.pending)}%`}} title={`รอคะแนน ${c.pending} คน`}>{c.pending}</i>}
+      </div>
+      <div className="outcome-total"><strong>{c.students}</strong><small>คน</small></div>
      </div>
-     <div className="outcome-total"><strong>{c.students}</strong><small>คน</small></div>
+     <div className="outcome-session-summary">
+      <Bot/>
+      {latestSession?<div><small>การสอบล่าสุด</small><b>{latestSession.test||`ครั้งที่ ${latestSession.testNumber||c.tests}`} · {latestSession.robot||'ไม่ระบุหุ่นยนต์'} · {latestSession.exam||'ไม่ระบุชุดข้อสอบ'}</b><span>{thaiSessionDate(latestSession.date)} · {latestSession.resultCount?`มีผลสอบ ${latestSession.resultCount} คน`:'สร้างรอบแล้ว ยังไม่มีผลสอบ'}</span></div>:<div><small>ประวัติการสอบ</small><b>ยังไม่มีรายการทดสอบ</b><span>เพิ่มครั้งทดสอบได้จากหน้าบันทึกผล</span></div>}
+      {latestSession&&<button type="button" className="button outcome-history-toggle" aria-expanded={expanded} onClick={()=>setExpandedClassroomId(current=>current===c.id?null:c.id)}><ChevronDown/>{expanded?'ซ่อนประวัติ':'ดูประวัติ'}</button>}
+     </div>
+     {expanded&&<div className="outcome-session-history">{[...(c.sessions||[])].reverse().map(item=><div className="outcome-session-item" key={item.id}>
+      <span className="outcome-session-number">{item.test||`ครั้งที่ ${item.testNumber||'-'}`}</span>
+      <span><Bot/><b>{item.robot||'ไม่ระบุหุ่นยนต์'}</b></span>
+      <span><FileText/><b>{item.exam||'ไม่ระบุชุดข้อสอบ'}</b></span>
+      <span><Clock3/><b>{thaiSessionDate(item.date)}</b><small>{item.resultCount?`มีผลสอบ ${item.resultCount} คน`:'ยังไม่มีผลสอบ'}</small></span>
+      <a className="button" href={`/scores?schoolId=${encodeURIComponent(school.id)}&classId=${encodeURIComponent(c.id)}&sessionId=${encodeURIComponent(item.id)}`} target="_blank" rel="noopener noreferrer"><ExternalLink/>เปิดบันทึกผล</a>
+     </div>)}</div>}
     </div>})}</div>
   </div></>}
  </>;

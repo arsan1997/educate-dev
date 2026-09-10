@@ -8,7 +8,7 @@ import Select from '../components/ui/Select';
 const testNumberFor=session=>Number(String(session?.test||'').match(/\d+/)?.[0])||0;
 const hasReportData=session=>Boolean(session?.date||session?.endDate||session?.robot||session?.exam||session?.teachingPeriod||session?.trainer||session?.feedback?.detail||session?.feedback?.summary||Object.values(session?.entries||{}).some(entry=>entry?.absent||entry?.is_special||entry?.score!==''&&entry?.score!=null||entry?.time));
 
-function Reports({stats,exportExcel,exportAllExcelZip,exportPDF,exportScoreTablePDF,onPreviewPDF,onPreviewScoreTablePDF,schools,schoolId,onSelectSchool}){
+function Reports({stats,exportExcel,exportAllExcelZip,exportPDF,onPreviewPDF,onOpenScoreTablePDF,schools,schoolId,onSelectSchool}){
  const school=schools?.find(item=>String(item.id)===String(schoolId))||null;
  const attempts=useMemo(()=>Array.from(new Set((school?.sessions||[]).map(testNumberFor).filter(Boolean))).sort((a,b)=>a-b),[school]);
  const [testNumber,setTestNumber]=useState('');
@@ -38,7 +38,7 @@ function Reports({stats,exportExcel,exportAllExcelZip,exportPDF,exportScoreTable
   </div>
   <div className="report-grid">
    <div className="card report"><div className="report-icon pdf"><FileText/></div><div><h2>รายงานสรุปผลสัมฤทธิ์</h2><p>สถิติและข้อเสนอแนะของครั้งที่ {selectedTestNumber||'-'} · มีข้อมูล {roomsWithData}/{school?.classrooms.length||0} ห้อง</p></div><div className="mini-stats"><span>เฉลี่ย <b>{summaryStats.avg.toFixed(1)}</b></span><span>ผ่าน <b>{summaryStats.rate.toFixed(0)}%</b></span></div><div className="report-actions"><button className="primary" disabled={!summaryReady} onClick={()=>onPreviewPDF(summaryOptions)}><Eye/>ดูตัวอย่าง PDF</button><button className="button" disabled={!summaryReady} onClick={()=>exportPDF('download',summaryOptions)}><Download/>ดาวน์โหลดทันที</button></div></div>
-   <div className="card report"><div className="report-icon pdf"><FileText/></div><div><h2>PDF ตารางคะแนน</h2><p>ตารางคะแนนทุกครั้งของทุกห้อง พร้อมลำดับ คะแนน และเวลาในการทดสอบ</p></div><div className="report-actions"><button className="primary" onClick={onPreviewScoreTablePDF}><Eye/>ดูตัวอย่าง PDF</button><button className="button" onClick={()=>exportScoreTablePDF('download')}><Download/>ดาวน์โหลดทันที</button></div></div>
+   <div className="card report"><div className="report-icon pdf"><FileText/></div><div><h2>PDF ตารางคะแนน</h2><p>เลือกส่งออกทุกห้องหรือเฉพาะชั้น พร้อมลำดับ คะแนน และเวลาในการทดสอบ</p></div><div className="report-actions"><button className="primary" onClick={onOpenScoreTablePDF}><Eye/>เลือกชั้นและสร้าง PDF</button></div></div>
    <div className="card report"><div className="report-icon excel"><LayoutDashboard/></div><div><h2>ข้อมูลคะแนนและเวลา</h2><p>ข้อมูลดิบรายบุคคลและตารางสรุปผลรายห้องในไฟล์ Excel</p></div><div className="mini-stats"><span>นักเรียน <b>{stats.all}</b></span><span>เข้าสอบ <b>{stats.present}</b></span></div><div className="report-actions"><button className="button" onClick={exportExcel}><Download/>ส่งออกโรงเรียนนี้</button><button className="button" onClick={exportAllExcelZip} style={{borderColor: '#107c41', color: '#107c41'}}><Download size={16}/> ส่งออกทุกโรงเรียน (ZIP)</button></div></div>
   </div>
  </>;

@@ -897,6 +897,17 @@ export async function saveSchoolMeta(school, userId) {
   }).eq('id', school.id));
 }
 
+export async function renameSchool(schoolId, currentName, nextName) {
+  const name=String(nextName||'').trim().replace(/\s+/g,' ');
+  if(!name)throw new Error('กรุณาระบุชื่อโรงเรียนใหม่');
+  const rows=must(await supabase.from('schools').update({
+    name,
+    updated_at:new Date().toISOString()
+  }).eq('id',String(schoolId)).eq('name',String(currentName)).eq('is_deleted',false).select('id,name'))||[];
+  if(rows.length!==1)throw new Error('ชื่อโรงเรียนถูกเปลี่ยนหรือไม่พบข้อมูล กรุณารีเฟรชแล้วลองใหม่');
+  return rows[0];
+}
+
 export async function saveClassroomMeta(classId, name) {
   must(await supabase.from('classrooms').update({ name, updated_at: new Date().toISOString() }).eq('id', classId));
 }
