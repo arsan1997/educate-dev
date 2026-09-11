@@ -19,8 +19,10 @@ function Classroom({meta,setMeta,students,setStudents,importExcel,importBulkExce
   const [statusFilter,setStatusFilter]=useState('active');
   const [confirming, setConfirming] = useState(null);
   const [renamingSchool,setRenamingSchool]=useState(false),[schoolNameDraft,setSchoolNameDraft]=useState(''),[schoolNameError,setSchoolNameError]=useState(''),[savingSchoolName,setSavingSchoolName]=useState(false);
+  const [editingSchoolMeta,setEditingSchoolMeta]=useState(false),[schoolMetaDraft,setSchoolMetaDraft]=useState(null);
   const [classroomLockReady,setClassroomLockReady]=useState(false),[classroomLockMessage,setClassroomLockMessage]=useState('');
   const editingBlocked=readOnly||!classroomLockReady;
+  const schoolMetaEditingBlocked=editingBlocked||!editingSchoolMeta;
   const canDeleteSchoolStructure=String(user?.email||'').trim().toLowerCase()==='arsan113@gmail.com';
 
   useEffect(()=>{
@@ -61,7 +63,43 @@ function Classroom({meta,setMeta,students,setStudents,importExcel,importBulkExce
   },[numberEditorRows,numberDraft]);
   const officeSchools=schools.filter(s=>officeFilter==='unassigned'?!s.officeId:String(s.officeId)===String(officeFilter)),matchingSchools=officeSchools.filter(s=>s.name.toLocaleLowerCase('th-TH').includes(schoolSearch.trim().toLocaleLowerCase('th-TH')));
   useEffect(()=>{setOfficeFilter(school?.officeId||'unassigned');setSchoolSearch('')},[school?.id]);
-  useEffect(()=>{setRenamingSchool(false);setSchoolNameDraft('');setSchoolNameError('')},[school?.id]);
+  useEffect(()=>{setRenamingSchool(false);setSchoolNameDraft('');setSchoolNameError('');setEditingSchoolMeta(false);setSchoolMetaDraft(null);setAddingOffice(false);setNewOffice('')},[school?.id,classroom?.id]);
+
+  const beginSchoolMetaEdit=()=>{
+    if(editingBlocked)return;
+    setSchoolMetaDraft({...meta});
+    setEditingSchoolMeta(true);
+  };
+  const cancelSchoolMetaEdit=()=>{
+    setEditingSchoolMeta(false);
+    setSchoolMetaDraft(null);
+    setAddingOffice(false);
+    setNewOffice('');
+  };
+  const requestSchoolMetaSave=()=>{
+    if(!schoolMetaDraft)return;
+    const changes=[];
+    const officeName=id=>offices.find(office=>String(office.id)===String(id))?.name||'ยังไม่ระบุสำนักงาน';
+    if(String(schoolMetaDraft.officeId||'')!==String(meta.officeId||''))changes.push(`สำนักงาน: ${officeName(meta.officeId)} → ${officeName(schoolMetaDraft.officeId)}`);
+    if(String(schoolMetaDraft.level||'')!==String(meta.level||''))changes.push(`ชื่อชั้นเรียน: ${meta.level||'—'} → ${schoolMetaDraft.level||'—'}`);
+    if(String(schoolMetaDraft.year||'')!==String(meta.year||''))changes.push(`ปีการศึกษา: ${meta.year||'—'} → ${schoolMetaDraft.year||'—'}`);
+    if(String(schoolMetaDraft.term||'')!==String(meta.term||''))changes.push(`ภาคเรียน: ${meta.term||'—'} → ${schoolMetaDraft.term||'—'}`);
+    if(!changes.length){cancelSchoolMetaEdit();return;}
+    setConfirming({
+      title:'ตรวจสอบก่อนบันทึกข้อมูล',
+      message:`โรงเรียน ${school.name}\nชั้นเรียน ${classroom?.name||'—'}\n\n${changes.join('\n')}`,
+      danger:false,
+      dangerLabel:'ยืนยันและบันทึก',
+      onConfirm:()=>{
+        setMeta(schoolMetaDraft);
+        setEditingSchoolMeta(false);
+        setSchoolMetaDraft(null);
+        setAddingOffice(false);
+        setNewOffice('');
+        flash('รับการเปลี่ยนแปลงแล้ว กำลังบันทึกอัตโนมัติ');
+      }
+    });
+  };
 
   const openSchoolRename=()=>{setSchoolNameDraft(school.name);setSchoolNameError('');setRenamingSchool(true)};
   const submitSchoolRename=async event=>{
@@ -149,28 +187,28 @@ function Classroom({meta,setMeta,students,setStudents,importExcel,importBulkExce
   if(!school)return <div className="page-title classroom-page-title"><div><span className="eyebrow">ข้อมูลพื้นฐาน</span><h1>จัดการโรงเรียนและชั้นเรียน</h1><p>ยังไม่มีข้อมูลโรงเรียน โปรดเพิ่มหรือนำเข้าไฟล์ Excel</p></div><div className="page-buttons classroom-page-actions"><a href="/template.xlsx" download className="button"><Download/>โหลดแบบฟอร์ม</a><button className="button" onClick={onAddSchool}><Plus/>เพิ่มโรงเรียน</button><div className="classroom-import-actions"><label className="primary"><Upload/>นำเข้า 1 โรงเรียน<input type="file" accept=".xlsx,.xls" onChange={importExcel} hidden/></label><label className="primary outline" title="นำเข้าข้อมูลหลายโรงเรียนพร้อมกัน (ไม่มี Popup ให้กดยืนยัน)"><Upload/>นำเข้ารวดเดียว (Bulk)<input type="file" multiple accept=".xlsx,.xls" onChange={importBulkExcel} hidden/></label></div></div></div>;
   return <>
   <div className="page-title classroom-page-title"><div><span className="eyebrow">ข้อมูลพื้นฐาน</span><h1>จัดการโรงเรียนและชั้นเรียน</h1><p>1 ไฟล์ Excel = 1 โรงเรียน · ระบบอ่านทุกชีตและทุกครั้งทดสอบอัตโนมัติ</p></div><div className="page-buttons classroom-page-actions"><a href="/template.xlsx" download className="button"><Download/>โหลดแบบฟอร์ม</a><button className="button" onClick={onAddSchool}><Plus/>เพิ่มโรงเรียน</button><div className="classroom-import-actions"><label className="primary"><Upload/>นำเข้า 1 โรงเรียน<input type="file" accept=".xlsx,.xls" onChange={importExcel} hidden/></label><label className="primary outline" title="นำเข้าข้อมูลหลายโรงเรียนพร้อมกัน (ไม่มี Popup ให้กดยืนยัน)"><Upload/>นำเข้ารวดเดียว (Bulk)<input type="file" multiple accept=".xlsx,.xls" onChange={importBulkExcel} hidden/></label></div></div></div>
-  <div className="card school-browser classroom-step-card"><div className="school-browser-title"><span className="classroom-step-number">1</span><School/><div><b>เลือกโรงเรียนที่จะจัดการ</b><small>{officeSchools.length} โรงเรียนในสำนักงาน · พบ {matchingSchools.length} รายการ</small></div></div><Field label="สำนักงาน"><Select value={officeFilter} onChange={id=>{const next=schools.find(s=>id==='unassigned'?!s.officeId:String(s.officeId)===String(id));if(!next||onSelectSchool(next.id)!==false){setOfficeFilter(id);setSchoolSearch('')}}}>{offices.map(office=><option key={office.id} value={office.id}>{office.name}</option>)}{schools.some(s=>!s.officeId)&&<option value="unassigned">ยังไม่ระบุสำนักงาน</option>}</Select></Field><Field label="ค้นหาโรงเรียน"><div className="school-browser-search"><input value={schoolSearch} onChange={e=>setSchoolSearch(e.target.value)} placeholder="พิมพ์ชื่อโรงเรียน..."/>{schoolSearch&&<button type="button" onClick={()=>setSchoolSearch('')} aria-label="ล้างคำค้นหา"><X/></button>}</div></Field><Field label="โรงเรียน"><Select value={matchingSchools.some(s=>s.id===school.id)?school.id:''} onChange={onSelectSchool}><option value="" disabled hidden>{matchingSchools.length?'เลือกโรงเรียน':'ไม่พบโรงเรียน'}</option>{matchingSchools.map(s=><option key={s.id} value={s.id}>{s.name}{(s.year||s.term)?' ('+(s.term?'เทอม '+s.term:'')+(s.term&&s.year?' ':'')+(s.year?'ปี '+s.year:'')+')':''} · {s.classrooms.length} ห้อง</option>)}</Select></Field></div>
+  <div className="card school-browser classroom-step-card"><div className="school-browser-title"><span className="classroom-step-number">1</span><School/><div><b>เลือกโรงเรียนที่จะจัดการ</b><small>{editingSchoolMeta?'กำลังแก้ไขข้อมูล กรุณาบันทึกหรือยกเลิกก่อนเปลี่ยนโรงเรียน':`${officeSchools.length} โรงเรียนในสำนักงาน · พบ ${matchingSchools.length} รายการ`}</small></div></div><Field label="สำนักงาน"><Select disabled={editingSchoolMeta} value={officeFilter} onChange={id=>{const next=schools.find(s=>id==='unassigned'?!s.officeId:String(s.officeId)===String(id));if(!next||onSelectSchool(next.id)!==false){setOfficeFilter(id);setSchoolSearch('')}}}>{offices.map(office=><option key={office.id} value={office.id}>{office.name}</option>)}{schools.some(s=>!s.officeId)&&<option value="unassigned">ยังไม่ระบุสำนักงาน</option>}</Select></Field><Field label="ค้นหาโรงเรียน"><div className="school-browser-search"><input disabled={editingSchoolMeta} value={schoolSearch} onChange={e=>setSchoolSearch(e.target.value)} placeholder="พิมพ์ชื่อโรงเรียน..."/>{schoolSearch&&<button type="button" disabled={editingSchoolMeta} onClick={()=>setSchoolSearch('')} aria-label="ล้างคำค้นหา"><X/></button>}</div></Field><Field label="โรงเรียน"><Select disabled={editingSchoolMeta} value={matchingSchools.some(s=>s.id===school.id)?school.id:''} onChange={onSelectSchool}><option value="" disabled hidden>{matchingSchools.length?'เลือกโรงเรียน':'ไม่พบโรงเรียน'}</option>{matchingSchools.map(s=><option key={s.id} value={s.id}>{s.name}{(s.year||s.term)?' ('+(s.term?'เทอม '+s.term:'')+(s.term&&s.year?' ':'')+(s.year?'ปี '+s.year:'')+')':''} · {s.classrooms.length} ห้อง</option>)}</Select></Field></div>
   <div className="card classroom-editor-card">
-   <div className="card-head classroom-editor-head"><div><span className="classroom-step-number">2</span><div><b>จัดการข้อมูลโรงเรียน</b><small>กำลังแก้ไข {school.name} · {school.classrooms.length} ห้องเรียน</small></div></div></div>
+   <div className="card-head classroom-editor-head"><div><span className="classroom-step-number">2</span><div><b>จัดการข้อมูลโรงเรียน</b><small>{editingSchoolMeta?'โหมดแก้ไข · ตรวจสอบและบันทึกเมื่อเสร็จ':'ล็อกไว้เพื่อป้องกันการเปลี่ยนข้อมูลโดยไม่ตั้งใจ'} · {school.name} · {school.classrooms.length} ห้องเรียน</small></div></div><div className="classroom-meta-actions">{editingSchoolMeta?<><button type="button" className="button" onClick={cancelSchoolMetaEdit}>ยกเลิก</button><button type="button" className="primary" onClick={requestSchoolMetaSave}><Save/>ตรวจสอบและบันทึก</button></>:<button type="button" className="button" disabled={editingBlocked} onClick={beginSchoolMetaEdit}><Edit2/>แก้ไขข้อมูล</button>}</div></div>
    {classroomLockMessage&&<div className="classroom-lock-banner"><ShieldCheck/><div><b>หยุดการแก้ไขชั่วคราว</b><small>{classroomLockMessage} หากไม่มีผู้ใช้อื่นกำลังแก้ไข กรุณารีเฟรชหน้าแล้วลองใหม่</small></div></div>}
    <div className="classroom-editor-layout">
     <div className="classroom-school-meta">
-      <Field label="ชื่อโรงเรียน"><div className="school-name-control"><input readOnly value={school.name||''}/><button type="button" className="button" disabled={editingBlocked} onClick={openSchoolRename}><Edit2/>แก้ไขชื่อ</button></div></Field>
-     <Field label="สำนักงานที่รับผิดชอบ"><div className="office-picker" style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}><Select disabled={editingBlocked} style={{ flex: 1, minWidth: '200px' }} value={meta.officeId||''} onChange={officeId=>setMeta({...meta,officeId})}><option value="">ยังไม่ระบุสำนักงาน</option>{offices.map(office=><option key={office.id} value={office.id}>{office.name}</option>)}</Select>{meta.officeId&&<button type="button" disabled={editingBlocked} className="button danger-text" title="ลบสำนักงานนี้" onClick={()=>{const o=offices.find(x=>x.id===meta.officeId);if(o)onDeleteOffice?.(o.id,o.name)}}><Trash2 size={16}/></button>}<button type="button" disabled={editingBlocked} className="button" onClick={()=>setAddingOffice(!addingOffice)}><Plus/>เพิ่มสำนักงาน</button></div>{addingOffice&&<div className="office-create school-office-create" style={{ marginTop: '12px' }}><input disabled={editingBlocked} value={newOffice} onChange={e=>setNewOffice(e.target.value)} placeholder="ชื่อสำนักงาน"/><button type="button" className="primary" disabled={editingBlocked||!newOffice.trim()} onClick={async()=>{const office=await onAddOffice(newOffice);if(office){setMeta({...meta,officeId:office.id});setNewOffice('');setAddingOffice(false)}}}>บันทึก</button></div>}</Field>
+      <Field label="ชื่อโรงเรียน"><div className="school-name-control"><input readOnly value={school.name||''}/><button type="button" className="button" disabled={schoolMetaEditingBlocked} onClick={openSchoolRename}><Edit2/>แก้ไขชื่อ</button></div></Field>
+     <Field label="สำนักงานที่รับผิดชอบ"><div className="office-picker" style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}><Select disabled={schoolMetaEditingBlocked} style={{ flex: 1, minWidth: '200px' }} value={(schoolMetaDraft||meta).officeId||''} onChange={officeId=>setSchoolMetaDraft({...schoolMetaDraft,officeId})}><option value="">ยังไม่ระบุสำนักงาน</option>{offices.map(office=><option key={office.id} value={office.id}>{office.name}</option>)}</Select>{editingSchoolMeta&&(schoolMetaDraft||meta).officeId&&<button type="button" disabled={editingBlocked} className="button danger-text" title="ลบสำนักงานนี้" onClick={()=>{const o=offices.find(x=>x.id===(schoolMetaDraft||meta).officeId);if(o)onDeleteOffice?.(o.id,o.name)}}><Trash2 size={16}/></button>}<button type="button" disabled={schoolMetaEditingBlocked} className="button" onClick={()=>setAddingOffice(!addingOffice)}><Plus/>เพิ่มสำนักงาน</button></div>{addingOffice&&<div className="office-create school-office-create" style={{ marginTop: '12px' }}><input disabled={schoolMetaEditingBlocked} value={newOffice} onChange={e=>setNewOffice(e.target.value)} placeholder="ชื่อสำนักงาน"/><button type="button" className="primary" disabled={schoolMetaEditingBlocked||!newOffice.trim()} onClick={async()=>{const office=await onAddOffice(newOffice);if(office){setSchoolMetaDraft({...schoolMetaDraft,officeId:office.id});setNewOffice('');setAddingOffice(false)}}}>บันทึก</button></div>}</Field>
     </div>
     <div className="classroom-class-editor">
      <div className="classroom-subsection-head"><div><b>จัดการชั้นเรียน</b><small>เลือกชั้นเรียนเพื่อแก้ไขรายละเอียด</small></div><span>{school.classrooms.length} ห้อง</span></div>
      <div className="form-grid mini classroom-mini-form">
       <Field label="เลือกชั้นเรียน">
-       <Select value={classroom?.id||''} onChange={onSelectClass}>
+       <Select disabled={editingSchoolMeta} value={classroom?.id||''} onChange={onSelectClass}>
          {school.classrooms.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
        </Select>
      </Field>
       <Field label="ชื่อชั้นเรียน / ห้อง">
-        <input disabled={editingBlocked} value={meta.level||''} onChange={e=>setMeta({...meta,level:e.target.value})}/>
+        <input disabled={schoolMetaEditingBlocked} value={(schoolMetaDraft||meta).level||''} onChange={e=>setSchoolMetaDraft({...schoolMetaDraft,level:e.target.value})}/>
      </Field>
-      <Field label="ปีการศึกษา"><input disabled={editingBlocked} value={meta.year||''} onChange={e=>setMeta({...meta,year:e.target.value})}/></Field>
-      <Field label="ภาคเรียนที่"><input disabled={editingBlocked} value={meta.term||''} onChange={e=>setMeta({...meta,term:e.target.value})}/></Field>
+      <Field label="ปีการศึกษา"><input disabled={schoolMetaEditingBlocked} value={(schoolMetaDraft||meta).year||''} onChange={e=>setSchoolMetaDraft({...schoolMetaDraft,year:e.target.value})}/></Field>
+      <Field label="ภาคเรียนที่"><input disabled={schoolMetaEditingBlocked} value={(schoolMetaDraft||meta).term||''} onChange={e=>setSchoolMetaDraft({...schoolMetaDraft,term:e.target.value})}/></Field>
       {canDeleteSchoolStructure&&<div className="mini-actions classroom-danger-actions">
        <button type="button" disabled={editingBlocked} className="school-delete-button" onClick={()=>onDeleteClassroom(classroom?.id)}><X/>ลบชั้นเรียน</button>
        <button type="button" disabled={editingBlocked} className="school-delete-button" onClick={()=>onDeleteSchool(school.id)}><X/>ลบโรงเรียน</button>
