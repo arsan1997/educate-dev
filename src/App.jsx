@@ -5,6 +5,7 @@ import {Sun, Moon, LayoutDashboard, Users, ClipboardPenLine, ClipboardCheck, Fil
 import {sampleSchool,parseSchoolWorkbook,calcStats,calcRanks,ROBOT_TYPES,compareClassNames,defaultExamForRobot,examOptionsForRobot} from './model';
 import {supabase,isSupabaseConfigured} from './supabase';
 import {loadSchoolIndex,loadSchoolDetail,loadClassroomDetail,loadDashboardInsights,saveSchoolMeta,renameSchool,saveSessionRows,saveClassroomStudents,saveClassroomMeta,saveResultRows,saveSchoolBundle,deleteSchool,deleteStudent,loadCurrentProfile,loadAccessAdmin,updateUserAccess,saveStudentOrder,loadOffices,createOffice,deleteOffice,loadAllProfiles,saveSchools,deleteClassroom,deleteSession,acquireLock,verifyLockOwnership,searchSchoolStudents} from './dataService';
+import {scoreTableDownloadMode} from './pdfDownloadPlatform';
 import brandLogo from './assets/logo.png';
 import './styles.css';
 import './dynamic.css';
@@ -60,6 +61,18 @@ const sessionResultCount=session=>Object.values(session?.entries||{}).filter(ent
 const sessionHasMetadata=session=>Boolean(session?.date||session?.endDate||session?.robot||session?.exam||session?.teachingPeriod||session?.trainer||session?.term||session?.year||session?.feedback?.detail||session?.feedback?.summary);
 const sessionHasAnyData=session=>sessionHasRecordedResult(session)||sessionHasMetadata(session);
 const sessionIsBlank=session=>!sessionHasAnyData(session);
+const optimizeScoreTableLogo=src=>new Promise(resolve=>{
+ const img=new Image();
+ img.onload=()=>{
+  const canvas=document.createElement('canvas'),width=1200,height=Math.round(width*img.height/img.width);
+  canvas.width=width;canvas.height=height;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,width,height);ctx.drawImage(img,0,0,width,height);
+  resolve(canvas.toDataURL('image/jpeg',.88));
+ };
+ img.onerror=()=>resolve(null);
+ img.src=src;
+});
 const feedbackTextFromSession=session=>[session?.feedback?.detail,session?.feedback?.summary]
  .filter(value=>value!==undefined&&value!==null&&String(value).length>0)
  .map(String)
@@ -994,10 +1007,13 @@ function App({user,profile,onSignOut}){
    import('jspdf-autotable'),
    import('./assets/logoBase64'),
    import('./assets/fontBase64')
-  ]);
-  const jsPDF=pdfModule.jsPDF||pdfModule.default;
-  const autoTable=autoTableModule.default||autoTableModule.autoTable;
-  const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+   ]);
+   const jsPDF=pdfModule.jsPDF||pdfModule.default;
+   const autoTable=autoTableModule.default||autoTableModule.autoTable;
+   const iosScoreTable=scoreTableDownloadMode()==='preview';
+   const scoreTableLogo=iosScoreTable&&logoBase64?await optimizeScoreTableLogo(logoBase64):logoBase64;
+   const scoreTableLogoFormat=iosScoreTable?'JPEG':'PNG';
+   const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
    doc.addFileToVFS('THSarabun.ttf',fontBase64);
    doc.addFont('THSarabun.ttf','THSarabun','normal');
    doc.addFont('THSarabun.ttf','THSarabun','bold');
@@ -1094,7 +1110,7 @@ function App({user,profile,onSignOut}){
    doc.setFontSize(pdfFontSize(13));
    if(isVisible('curriculum'))doc.text('หลักสูตร School Robotics',pageWidth/2,25,{align:'center'});
    if(isVisible('termYear'))doc.text(`ภาคเรียนที่ ${term} ปีการศึกษา ${year}`,pageWidth/2,35,{align:'center'});
-   if(logoBase64&&isVisible('logo'))doc.addImage(logoBase64,'PNG',234,13,50,50/BRAND_LOGO_ASPECT_RATIO,undefined,'FAST');
+    if(scoreTableLogo&&isVisible('logo'))doc.addImage(scoreTableLogo,scoreTableLogoFormat,234,13,50,50/BRAND_LOGO_ASPECT_RATIO,undefined,'FAST');
   };
   const addSummaryHeader=()=>{
    doc.setTextColor(0,0,0);
@@ -1104,7 +1120,7 @@ function App({user,profile,onSignOut}){
     doc.setFontSize(pdfFontSize(13));
    doc.text('หลักสูตร School Robotics',pageWidth/2,28,{align:'center'});
    doc.text(`ภาคเรียนที่ ${term} ปีการศึกษา ${year}`,pageWidth/2,39,{align:'center'});
-   if(logoBase64)doc.addImage(logoBase64,'PNG',226,17,52,52/BRAND_LOGO_ASPECT_RATIO,undefined,'FAST');
+    if(scoreTableLogo)doc.addImage(scoreTableLogo,scoreTableLogoFormat,226,17,52,52/BRAND_LOGO_ASPECT_RATIO,undefined,'FAST');
   };
 
   orderedClassrooms.forEach((classroom,classIndex)=>{
@@ -1638,7 +1654,11 @@ function App({user,profile,onSignOut}){
    try{const preview=await exportScoreTablePDF('preview',selection);if(preview)setPdfPreview(preview)}catch(error){console.error('Score table PDF preview failed',error);flash(`สร้าง PDF ตารางคะแนนไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`);throw error}
   };
   const downloadSelectedScoreTablePDF=async selection=>{
-   try{await exportScoreTablePDF('download',selection)}catch(error){console.error('Score table PDF download failed',error);flash(`ดาวน์โหลด PDF ตารางคะแนนไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`);throw error}
+   try{
+    const mode=scoreTableDownloadMode();
+    const result=await exportScoreTablePDF(mode,selection);
+    if(mode==='preview'&&result)setPdfPreview({...result,mobileSave:true});
+   }catch(error){console.error('Score table PDF download failed',error);flash(`ดาวน์โหลด PDF ตารางคะแนนไม่สำเร็จ: ${error.message||'โปรดลองอีกครั้ง'}`);throw error}
   };
  useEffect(()=>()=>{if(pdfPreview?.url)URL.revokeObjectURL(pdfPreview.url)},[pdfPreview?.url]);
 
