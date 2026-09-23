@@ -1,5 +1,5 @@
-import React, {useEffect, useMemo, useState} from 'react';
-import {LayoutDashboard, FileText, Download, Eye} from 'lucide-react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
+import {LayoutDashboard, FileText, Download, Eye, Search, X} from 'lucide-react';
 import {calcStats} from '../model';
 
 import Field from '../components/ui/Field';
@@ -12,6 +12,42 @@ function Reports({stats,exportExcel,exportAllExcelZip,exportPDF,onPreviewPDF,onO
  const school=schools?.find(item=>String(item.id)===String(schoolId))||null;
  const attempts=useMemo(()=>Array.from(new Set((school?.sessions||[]).map(testNumberFor).filter(Boolean))).sort((a,b)=>a-b),[school]);
  const [testNumber,setTestNumber]=useState('');
+ const [schoolSearch,setSchoolSearch]=useState('');
+ const [schoolPickerOpen,setSchoolPickerOpen]=useState(false);
+ const [activeSchoolIndex,setActiveSchoolIndex]=useState(0);
+ const schoolPickerRef=useRef(null);
+ const schoolSearchRef=useRef(null);
+ const normalizedSchoolSearch=schoolSearch.trim().toLocaleLowerCase('th-TH');
+ const schoolSearchReady=normalizedSchoolSearch.length>=2;
+ const matchingSchools=useMemo(()=>{
+  if(!schoolSearchReady)return [];
+  return (schools||[]).filter(item=>String(item.name||'').toLocaleLowerCase('th-TH').includes(normalizedSchoolSearch));
+ },[schools,schoolSearchReady,normalizedSchoolSearch]);
+ const visibleSchools=matchingSchools.slice(0,8);
+ const selectReportSchool=item=>{
+  if(onSelectSchool(item.id)===false)return;
+  setSchoolSearch(item.name||'');
+  setSchoolPickerOpen(false);
+  setActiveSchoolIndex(0);
+ };
+ const closeSchoolPicker=()=>{
+  setSchoolSearch(school?.name||'');
+  setSchoolPickerOpen(false);
+  setActiveSchoolIndex(0);
+ };
+ const handleSchoolSearchKeyDown=event=>{
+  if(event.key==='Escape'){event.preventDefault();closeSchoolPicker();return}
+  if(!schoolPickerOpen||!visibleSchools.length)return;
+  if(event.key==='ArrowDown'){event.preventDefault();setActiveSchoolIndex(index=>(index+1)%visibleSchools.length)}
+  if(event.key==='ArrowUp'){event.preventDefault();setActiveSchoolIndex(index=>(index-1+visibleSchools.length)%visibleSchools.length)}
+  if(event.key==='Enter'){event.preventDefault();selectReportSchool(visibleSchools[activeSchoolIndex]||visibleSchools[0])}
+ };
+ useEffect(()=>{setSchoolSearch(school?.name||'');setSchoolPickerOpen(false);setActiveSchoolIndex(0)},[school?.id,school?.name]);
+ useEffect(()=>{
+  const handleClickOutside=event=>{if(schoolPickerRef.current&&!schoolPickerRef.current.contains(event.target))closeSchoolPicker()};
+  document.addEventListener('mousedown',handleClickOutside);
+  return()=>document.removeEventListener('mousedown',handleClickOutside);
+ },[school?.name]);
  useEffect(()=>setTestNumber(current=>attempts.some(item=>String(item)===String(current))?current:(attempts[0]||'')),[attempts]);
  const selectedTestNumber=Number(testNumber)||0;
  const selectedStudents=useMemo(()=>{
@@ -32,7 +68,7 @@ function Reports({stats,exportExcel,exportAllExcelZip,exportPDF,onPreviewPDF,onO
   <div className="page-title"><div><span className="eyebrow">ส่งออกข้อมูล</span><h1>รายงานผลการประเมิน</h1><p>จัดทำเอกสารพร้อมพิมพ์หรือสำรองข้อมูลสำหรับใช้งานต่อ</p></div></div>
   <div className="card test-info" style={{marginBottom: '1.5rem'}}>
    <div className="form-grid report-filter-grid">
-    <Field label="เลือกโรงเรียนที่ต้องการรายงาน"><Select value={schoolId} onChange={onSelectSchool}><option value="" disabled hidden>เลือกโรงเรียน</option>{schools?.map(s=><option value={s.id} key={s.id}>{s.name} ({s.classrooms?.length||0} ห้อง)</option>)}</Select></Field>
+    <Field label={`ค้นหาและเลือกโรงเรียน${schoolSearchReady?` · พบ ${matchingSchools.length} รายการ`:''}`}><div className="report-school-picker" ref={schoolPickerRef}><div className="report-school-search"><Search/><input ref={schoolSearchRef} value={schoolSearch} onFocus={event=>{setSchoolPickerOpen(true);event.currentTarget.select()}} onChange={event=>{setSchoolSearch(event.target.value);setSchoolPickerOpen(true);setActiveSchoolIndex(0)}} onKeyDown={handleSchoolSearchKeyDown} placeholder="พิมพ์ชื่อโรงเรียนอย่างน้อย 2 ตัวอักษร" role="combobox" aria-expanded={schoolPickerOpen} aria-controls="report-school-results" aria-autocomplete="list" aria-activedescendant={schoolPickerOpen&&visibleSchools.length?`report-school-${visibleSchools[activeSchoolIndex]?.id}`:undefined}/>{schoolSearch&&<button type="button" onMouseDown={event=>event.preventDefault()} onClick={()=>{setSchoolSearch('');setSchoolPickerOpen(true);setActiveSchoolIndex(0);schoolSearchRef.current?.focus()}} aria-label="ล้างคำค้นหา"><X/></button>}</div>{schoolPickerOpen&&<div className="report-school-results" id="report-school-results" role="listbox">{!schoolSearchReady?<div className="report-school-message">พิมพ์อย่างน้อย 2 ตัวอักษรเพื่อค้นหาโรงเรียน</div>:!visibleSchools.length?<div className="report-school-message">ไม่พบโรงเรียนที่ตรงกับคำค้นหา</div>:<>{visibleSchools.map((item,index)=><button type="button" id={`report-school-${item.id}`} role="option" aria-selected={String(item.id)===String(schoolId)} className={`report-school-result ${index===activeSchoolIndex?'active':''} ${String(item.id)===String(schoolId)?'selected':''}`} key={item.id} onMouseEnter={()=>setActiveSchoolIndex(index)} onClick={()=>selectReportSchool(item)}><b>{item.name||'ยังไม่ได้ตั้งชื่อโรงเรียน'}</b><small>{item.term?`ภาคเรียน ${item.term} · `:''}{item.year?`ปี ${item.year} · `:''}{item.classrooms?.length||0} ห้อง{String(item.id)===String(schoolId)?' · เลือกอยู่':''}</small></button>)}{matchingSchools.length>visibleSchools.length&&<div className="report-school-message">แสดง 8 รายการแรก · พิมพ์เพิ่มเพื่อจำกัดผลลัพธ์</div>}</>}</div>}</div></Field>
     <Field label="รอบสำหรับรายงานสรุป"><Select value={String(testNumber)} onChange={setTestNumber} disabled={!attempts.length}><option value="" disabled hidden>{school?.loaded?'ยังไม่มีครั้งทดสอบ':'กำลังโหลดข้อมูลโรงเรียน...'}</option>{attempts.map(number=><option value={number} key={number}>ครั้งที่ {number} · มีข้อมูล {school?.classrooms.filter(classroom=>school.sessions.some(item=>String(item.classId)===String(classroom.id)&&testNumberFor(item)===number&&hasReportData(item))).length||0}/{school?.classrooms.length||0} ห้อง</option>)}</Select></Field>
    </div>
   </div>
