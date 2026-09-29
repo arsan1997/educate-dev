@@ -8,6 +8,7 @@ import ThaiDateInput from '../components/ui/ThaiDateInput';
 
 const clampNumber=value=>{const n=Number(value);return Number.isFinite(n)&&n>0?Math.floor(n):0};
 const rowKey=(ownerId,itemId)=>`${ownerId}::${itemId}`;
+const EMPTY_CLASSROOMS=[];
 
 function StockPage({schools,offices,user,profile,flash}){
   const [tab,setTab]=useState('office');
@@ -124,7 +125,7 @@ function StockPage({schools,offices,user,profile,flash}){
   const planningOfficeId=plan.officeId||'';
   const planningSchools=schools.filter(s=>String(s.officeId||'')===String(plan.officeId||''));
   const planningSchool=schools.find(s=>String(s.id)===String(plan.schoolId));
-  const allPlanningClassrooms=detailSchool&&String(detailSchool.id)===String(plan.schoolId)?detailSchool.classrooms:[];
+  const allPlanningClassrooms=detailSchool&&String(detailSchool.id)===String(plan.schoolId)?detailSchool.classrooms:EMPTY_CLASSROOMS;
   const planningRequestRows=useMemo(()=>teacherRequests.filter(request=>
     String(request.school_id)===String(plan.schoolId)&&
     String(request.robot_type)===String(plan.robot)&&
@@ -144,7 +145,8 @@ function StockPage({schools,offices,user,profile,flash}){
     :`ยังไม่มีห้องที่ครูส่งคำขอสำหรับ ${plan.robot} อาจเป็นเพราะโรงเรียนไม่ได้ใช้หุ่นนี้ หรือครูยังไม่ได้ส่งข้อมูล`;
 
   useEffect(()=>{
-    setSelectedClassIds(planningClassrooms.map(c=>c.id));
+    const nextIds=planningClassrooms.map(c=>c.id);
+    setSelectedClassIds(current=>current.length===nextIds.length&&current.every((id,index)=>String(id)===String(nextIds[index]))?current:nextIds);
   },[plan.schoolId,plan.robot,planningClassrooms]);
 
   useEffect(()=>{
