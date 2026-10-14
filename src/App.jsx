@@ -1,7 +1,7 @@
 import React, {lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import Swal from 'sweetalert2';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import {Sun, Moon, LayoutDashboard, Users, ClipboardPenLine, ClipboardCheck, FileText, Upload, Plus, Save, Download, ChevronDown, ChevronLeft, School, Bot, CheckCircle2, AlertCircle, X, LogOut, Cloud, CloudOff, Edit2, ShieldCheck, Clock3, Eye, UserMinus, RotateCcw, FileCog, Trash2, MapPin, Warehouse} from 'lucide-react';
+import {Sun, Moon, LayoutDashboard, Users, ClipboardPenLine, ClipboardCheck, FileText, Upload, Plus, Save, Download, ChevronDown, ChevronLeft, School, Bot, CheckCircle2, AlertCircle, X, LogOut, Cloud, CloudOff, Edit2, ShieldCheck, Clock3, Eye, UserMinus, RotateCcw, FileCog, Trash2, MapPin, Warehouse, Trophy} from 'lucide-react';
 import {sampleSchool,parseSchoolWorkbook,calcStats,calcRanks,ROBOT_TYPES,compareClassNames,defaultExamForRobot,examOptionsForRobot} from './model';
 import {supabase,isSupabaseConfigured} from './supabase';
 import {loadSchoolIndex,loadSchoolDetail,loadClassroomDetail,loadDashboardInsights,saveSchoolMeta,renameSchool,saveSessionRows,saveClassroomStudents,saveClassroomMeta,saveResultRows,saveSchoolBundle,deleteSchool,deleteStudent,loadCurrentProfile,loadAccessAdmin,updateUserAccess,saveStudentOrder,loadOffices,createOffice,deleteOffice,loadAllProfiles,saveSchools,deleteClassroom,deleteSession,acquireLock,verifyLockOwnership,searchSchoolStudents} from './dataService';
@@ -37,10 +37,11 @@ const TeacherForm=lazy(()=>import('./pages/TeacherForm'));
 const DebugEvals=lazy(()=>import('./pages/DebugEvals'));
 const StockPage=lazy(()=>import('./pages/StockPage'));
 const ScoreStatus=lazy(()=>import('./pages/ScoreStatus'));
+const CompetitionScorePage=lazy(()=>import('./pages/CompetitionScorePage'));
 
 const pageLoading=<div className="boot-screen"><Bot/>กำลังโหลดหน้า…</div>;
 
-const baseTabs=[['dashboard','ภาพรวม',LayoutDashboard],['classroom','จัดการชั้นเรียน',Users],['onsite','หน้างาน',MapPin],['scores','บันทึกผลทดสอบ',ClipboardPenLine],['score-status','ติดตามการกรอกคะแนน',ClipboardCheck],['reports','รายงาน',FileText],['dataprep','เตรียมข้อมูล',FileCog]];
+const baseTabs=[['dashboard','ภาพรวม',LayoutDashboard],['classroom','จัดการชั้นเรียน',Users],['onsite','หน้างาน',MapPin],['scores','บันทึกผลทดสอบ',ClipboardPenLine],['competition-scores','แข่งขันภายใน',Trophy],['score-status','ติดตามการกรอกคะแนน',ClipboardCheck],['reports','รายงาน',FileText],['dataprep','เตรียมข้อมูล',FileCog]];
 const BRAND_LOGO_ASPECT_RATIO = 17616 / 6250;
 const themeSwal = Swal.mixin({
   customClass: {
@@ -88,6 +89,7 @@ function App({user,profile,onSignOut}){
   const path = location.pathname;
   let tab = 'dashboard';
   if (path.startsWith('/scores')) tab = 'scores';
+  else if (path.startsWith('/competition-scores')) tab = 'competition-scores';
   else if (path.startsWith('/score-status')) tab = 'score-status';
   else if (path.startsWith('/onsite') || path.startsWith('/evaluate')) tab = 'onsite';
   else if (path.startsWith('/stock')) tab = 'stock';
@@ -106,7 +108,7 @@ function App({user,profile,onSignOut}){
   const isSuperOwner = user.email === 'arsan113@gmail.com';
   const tabs=baseTabs;
   const readOnly=profile.role==='viewer';
-  const viewerLocked=readOnly&&['classroom','scores','reports'].includes(tab);
+  const viewerLocked=readOnly&&['classroom','scores','competition-scores','reports'].includes(tab);
   const refs=useRef({}),previousPathRef=useRef(path),cloudReady=useRef(false),schoolLoadRequest=useRef(0),dirtyRef=useRef({schools:new Set(),sessions:new Set(),classrooms:new Set(),results:new Map()}),lockRetryTimer=useRef(null),[cloudStatus,setCloudStatus]=useState('loading'),[contextLoading,setContextLoading]=useState(false),[contextLoadError,setContextLoadError]=useState(''),[roomRefreshing,setRoomRefreshing]=useState(false),school=schools.find(s=>s.id===schoolId)||schools[0],classroom=school?.classrooms.find(c=>c.id===classId)||school?.classrooms[0];
   const scoreTargetRequest=useRef(''),contextRetryRef=useRef(null);
   const searchStudentsInSchool=useCallback((targetSchoolId,classroomIds,term)=>searchSchoolStudents(targetSchoolId,classroomIds,term),[]);
@@ -1714,6 +1716,7 @@ function App({user,profile,onSignOut}){
       :tab==='onsite'?<div className="context dashboard-header-label"><MapPin/><div><small>ภารกิจ</small><b>จัดการงานหน้างาน</b></div></div>
       :tab==='stock'?<div className="context dashboard-header-label"><Warehouse/><div><small>Inventory</small><b>Stock อุปกรณ์</b></div></div>
        :tab==='scores'?<div className="context dashboard-header-label"><ClipboardPenLine/><div><small>การประเมินผล</small><b>บันทึกผลการทดสอบ</b></div></div>
+       :tab==='competition-scores'?<div className="context dashboard-header-label"><Trophy/><div><small>การแข่งขันภายใน</small><b>บันทึกคะแนนการแข่งขัน</b></div></div>
        :tab==='score-status'?<div className="context dashboard-header-label"><ClipboardCheck/><div><small>การประเมินผล</small><b>ติดตามการกรอกคะแนน</b></div></div>
       :tab==='classroom'?<div className="context dashboard-header-label"><Users/><div><small>ข้อมูลพื้นฐาน</small><b>จัดการชั้นเรียน</b></div></div>
       :tab==='reports'?<div className="context dashboard-header-label"><FileText/><div><small>ส่งออกข้อมูล</small><b>รายงานผลการประเมิน</b></div></div>
@@ -1733,6 +1736,7 @@ function App({user,profile,onSignOut}){
          <Route path="/evaluate" element={<EvaluateForm />} />
          <Route path="/stock" element={<StockPage schools={schools} offices={offices} user={user} profile={profile} flash={flash}/>} />
             <Route path="/scores" element={<ScorePage meta={scoreMeta} setMeta={setMeta} students={scoreStudents} update={update} move={move} refs={refs} feedback={scoreFeedback} setFeedback={setFeedback} stats={scoreStats} flash={flash} schools={schools} offices={offices} schoolId={schoolId||''} classId={classId||''} classrooms={scoreSchool?.classrooms||[]} onSelectSchool={selectSchool} onSelectClass={selectClass} onSearchStudents={searchStudentsInSchool} sessions={scoreClassSessions} sessionId={scoreSession?.id} onSelectSession={id=>guardNavigation(()=>setSessionId(id))} onAddSession={addSession} onEditSession={editSession} onDeleteSession={removeSession} onRefreshClassroom={refreshClassroom} isRefreshingRoom={roomRefreshing} onOpenReportPDF={openScoreReportSelector} onPreviewScoreTablePDF={()=>openScoreTablePDFSelector('classroom')} onSave={flushChanges} onResetSession={resetCurrentSession} saveBlocked={scoreEntryBlocked} blockedBy={scoreSaveBlocked?.lockedBy||''} retryingSaveLock={retryingScoreLock} onRetrySaveLock={retryScoreSaveLock} onReloadAfterLock={()=>window.location.reload()} userProfiles={userProfiles} user={user}/>} />
+          <Route path="/competition-scores" element={<CompetitionScorePage schools={schools} offices={offices} user={user} userProfiles={userProfiles} flash={flash} readOnly={readOnly} onTransferComplete={async transferredSchoolId=>{const detail=await loadSchoolDetail(transferredSchoolId);setSchools(current=>current.map(item=>String(item.id)===String(detail.id)?{...detail,summary:undefined}:item))}}/>} />
           <Route path="/score-status" element={<ScoreStatus offices={offices}/>} />
           <Route path="/classroom" element={<Classroom {...{meta,setMeta,setStudents,importExcel,importBulkExcel,flash,offices,user,userProfiles,readOnly}} students={classroomStudents} schools={schools} school={school} classroom={classroom} onAddSchool={()=>setSchoolAdding(true)} onAddOffice={addOffice} onDeleteOffice={removeOffice} onRenameSchool={renameSelectedSchool} onSelectSchool={selectSchool} onSelectClass={selectClass} onDeleteStudent={removeStudent} onDeleteSchool={id=>setConfirming({message:'ยืนยันการลบโรงเรียนนี้? ข้อมูลทั้งหมดจะถูกย้ายไปที่ถังขยะและจะไม่แสดงในหน้ารวม',onConfirm:async ()=>{try{setCloudStatus('saving');await deleteSchool(id);setSchools(all=>all.filter(s=>s.id!==id));const next=schools.find(s=>s.id!==id);if(next)selectSchoolAfter(next);else setSchoolId(null);flash('ลบโรงเรียนสำเร็จ (ย้ายไปถังขยะ)');setCloudStatus('saved')}catch(e){console.error(e);setCloudStatus('error');flash('ลบโรงเรียนไม่สำเร็จ')}}})} onDeleteClassroom={id=>setConfirming({title:'ยืนยันการลบชั้นเรียน',message:'คุณแน่ใจหรือไม่ว่าต้องการลบชั้นเรียนนี้? ข้อมูลนักเรียนและผลสอบทั้งหมดในชั้นเรียนนี้จะถูกลบทิ้งถาวร',dangerLabel:'ลบทิ้ง',onConfirm:async()=>{try{setCloudStatus('saving');await deleteClassroom(id);setSchools(all=>all.map(s=>s.id===school.id?{...s,classrooms:s.classrooms.filter(c=>c.id!==id),sessions:s.sessions.filter(x=>x.classId!==id)}:s));const nextClass=school.classrooms.find(c=>c.id!==id);if(nextClass)selectClassNow(nextClass.id);else{navigate('/');selectSchoolNow(school.id);}flash('ลบชั้นเรียนสำเร็จ');setCloudStatus('saved')}catch(e){console.error(e);setCloudStatus('error');flash(`ลบชั้นเรียนไม่สำเร็จ: ${e.message}`)}}})}/>} />
          <Route path="/debug" element={<DebugEvals />} />

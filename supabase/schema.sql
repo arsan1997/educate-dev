@@ -154,6 +154,25 @@ create table if not exists public.test_results (
   updated_by uuid references auth.users(id), updated_at timestamptz not null default now(), primary key(session_id,student_id)
 );
 
+-- Internal competition data stays separate from normal assessments.
+create table if not exists public.competition_sessions (
+  id text primary key, classroom_id text not null references public.classrooms(id) on delete cascade,
+  competition_name text not null, competition_date date, robot_type text, exam_set text,
+  created_by uuid references auth.users(id), is_deleted boolean not null default false,
+  deleted_at timestamptz, deleted_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+create index if not exists competition_sessions_classroom_idx on public.competition_sessions(classroom_id,created_at);
+
+create table if not exists public.competition_results (
+  session_id text references public.competition_sessions(id) on delete cascade,
+  student_id text references public.students(id) on delete cascade,
+  score numeric check(score between 0 and 50), time_value text,
+  absent boolean not null default false, is_special boolean not null default false,
+  updated_by uuid references auth.users(id), updated_at timestamptz not null default now(),
+  primary key(session_id,student_id)
+);
+
 create table if not exists public.inventory_items (
   id text primary key,
   name text not null,
@@ -843,6 +862,8 @@ alter table public.classrooms enable row level security;
 alter table public.students enable row level security;
 alter table public.test_sessions enable row level security;
 alter table public.test_results enable row level security;
+alter table public.competition_sessions enable row level security;
+alter table public.competition_results enable row level security;
 alter table public.inventory_items enable row level security;
 alter table public.office_inventory enable row level security;
 alter table public.school_inventory enable row level security;
@@ -872,6 +893,16 @@ drop policy if exists "session member all" on public.test_sessions;
 drop policy if exists "session_all" on public.test_sessions;
 drop policy if exists "result member all" on public.test_results;
 drop policy if exists "result_all" on public.test_results;
+drop policy if exists "competition_session_select" on public.competition_sessions;
+drop policy if exists "competition_session_write" on public.competition_sessions;
+drop policy if exists "competition_session_insert" on public.competition_sessions;
+drop policy if exists "competition_session_update" on public.competition_sessions;
+drop policy if exists "competition_session_delete" on public.competition_sessions;
+drop policy if exists "competition_result_select" on public.competition_results;
+drop policy if exists "competition_result_write" on public.competition_results;
+drop policy if exists "competition_results_insert" on public.competition_results;
+drop policy if exists "competition_results_update" on public.competition_results;
+drop policy if exists "competition_results_delete" on public.competition_results;
 drop policy if exists "inventory_items_select" on public.inventory_items;
 drop policy if exists "inventory_items_write" on public.inventory_items;
 drop policy if exists "office_inventory_select" on public.office_inventory;
@@ -935,6 +966,10 @@ create policy "session_select" on public.test_sessions for select using(public.c
 create policy "session_write" on public.test_sessions for all using(public.can_edit_school((select c.school_id from public.classrooms c where c.id=public.test_sessions.classroom_id))) with check(public.can_edit_school((select c.school_id from public.classrooms c where c.id=public.test_sessions.classroom_id)));
 create policy "result_select" on public.test_results for select using(public.can_access_school((select c.school_id from public.test_sessions ts join public.classrooms c on c.id=ts.classroom_id where ts.id=public.test_results.session_id)));
 create policy "result_write" on public.test_results for all using(public.can_edit_school((select c.school_id from public.test_sessions ts join public.classrooms c on c.id=ts.classroom_id where ts.id=public.test_results.session_id))) with check(public.can_edit_school((select c.school_id from public.test_sessions ts join public.classrooms c on c.id=ts.classroom_id where ts.id=public.test_results.session_id)));
+create policy "competition_session_select" on public.competition_sessions for select using(public.can_access_school((select c.school_id from public.classrooms c where c.id=public.competition_sessions.classroom_id)));
+create policy "competition_session_write" on public.competition_sessions for all using(public.can_edit_school((select c.school_id from public.classrooms c where c.id=public.competition_sessions.classroom_id))) with check(public.can_edit_school((select c.school_id from public.classrooms c where c.id=public.competition_sessions.classroom_id)));
+create policy "competition_result_select" on public.competition_results for select using(public.can_access_school((select c.school_id from public.competition_sessions cs join public.classrooms c on c.id=cs.classroom_id where cs.id=public.competition_results.session_id)));
+create policy "competition_result_write" on public.competition_results for all using(public.can_edit_school((select c.school_id from public.competition_sessions cs join public.classrooms c on c.id=cs.classroom_id where cs.id=public.competition_results.session_id))) with check(public.can_edit_school((select c.school_id from public.competition_sessions cs join public.classrooms c on c.id=cs.classroom_id where cs.id=public.competition_results.session_id)));
 
 create policy "inventory_items_select" on public.inventory_items for select using(exists(select 1 from public.profiles where id=auth.uid() and role<>'pending'));
 create policy "inventory_items_write" on public.inventory_items for all using(public.is_super_admin()) with check(public.is_super_admin());
@@ -1052,7 +1087,7 @@ grant execute on function public.search_student_scores(text) to public;
 grant execute on function public.search_student_scores(text) to anon;
 grant execute on function public.search_student_scores(text) to authenticated;
 
--- Public competition leaderboard for /exam_test
+-- Public internal competition leaderboard for /exam_test
 drop function if exists public.get_exam_test_leaderboard;
 create or replace function public.get_exam_test_leaderboard()
 returns table (
@@ -1085,7 +1120,7 @@ as $$
     select
       s.id as school_id,
       c.id as classroom_id,
-      ts.id as session_id,
+      cs.id as session_id,
       s.name as school_name,
       s.academic_year,
       s.term,
@@ -1093,32 +1128,32 @@ as $$
       st.id as student_id,
       st.student_no,
       st.full_name as student_name,
-      ts.test_name,
-      ts.test_date,
-      ts.robot_type,
-      ts.exam_set,
-      tr.score,
-      tr.time_value,
+      cs.competition_name as test_name,
+      cs.competition_date as test_date,
+      cs.robot_type,
+      cs.exam_set,
+      cr.score,
+      cr.time_value,
       case
-        when tr.time_value ~ '^[0-9]+[:.][0-9]+$'
-          then split_part(replace(tr.time_value,'.',':'),':',1)::integer * 60
-            + split_part(replace(tr.time_value,'.',':'),':',2)::integer
-        when tr.time_value ~ '^[0-9]+$'
-          then tr.time_value::integer
+        when cr.time_value ~ '^[0-9]+[:.][0-9]+$'
+          then split_part(replace(cr.time_value,'.',':'),':',1)::integer * 60
+            + split_part(replace(cr.time_value,'.',':'),':',2)::integer
+        when cr.time_value ~ '^[0-9]+$'
+          then cr.time_value::integer
         else null
       end as time_seconds
-    from public.test_results tr
-    join public.test_sessions ts on ts.id = tr.session_id
-    join public.students st on st.id = tr.student_id
-    join public.classrooms c on c.id = st.classroom_id and c.id = ts.classroom_id
+    from public.competition_results cr
+    join public.competition_sessions cs on cs.id = cr.session_id
+    join public.students st on st.id = cr.student_id
+    join public.classrooms c on c.id = st.classroom_id and c.id = cs.classroom_id
     join public.schools s on s.id = c.school_id
     where s.is_deleted = false
       and c.is_deleted = false
-      and ts.is_deleted = false
+      and cs.is_deleted = false
       and st.active = true
-      and tr.absent = false
-      and coalesce(tr.is_special,false) = false
-      and tr.score is not null
+      and cr.absent = false
+      and coalesce(cr.is_special,false) = false
+      and cr.score is not null
   )
   select
     scored.school_id,
@@ -1149,6 +1184,106 @@ $$;
 grant execute on function public.get_exam_test_leaderboard() to public;
 grant execute on function public.get_exam_test_leaderboard() to anon;
 grant execute on function public.get_exam_test_leaderboard() to authenticated;
+
+-- Internal competition locks are scoped to one competition session. This lets
+-- different rooms and different competitions be scored at the same time.
+create table if not exists public.competition_session_locks (
+    session_id text primary key references public.competition_sessions(id) on delete cascade,
+    locked_by uuid not null references auth.users(id) on delete cascade,
+    locked_by_name text,
+    locked_at timestamptz not null default now()
+);
+alter table public.competition_session_locks enable row level security;
+revoke all on public.competition_session_locks from public,anon,authenticated;
+drop policy if exists "competition_lock_owner_select" on public.competition_session_locks;
+create policy "competition_lock_owner_select" on public.competition_session_locks
+for select to authenticated using (
+    locked_by=auth.uid() and locked_at>=now()-interval '5 minutes'
+);
+grant select on public.competition_session_locks to authenticated;
+
+create or replace function public.acquire_competition_session_lock(p_session_id text,p_locked_by_name text default null)
+returns table(success boolean,locked_by_name text)
+language plpgsql security definer set search_path=public as $$
+declare v_lock public.competition_session_locks%rowtype; v_name text:=coalesce(nullif(btrim(p_locked_by_name),''),'แอดมิน');
+begin
+ if auth.uid() is null then raise exception 'Authentication required' using errcode='42501'; end if;
+ if not exists(select 1 from public.competition_sessions cs join public.classrooms c on c.id=cs.classroom_id where cs.id=p_session_id and cs.is_deleted=false and public.can_edit_school(c.school_id)) then raise exception 'Not permitted to edit this competition' using errcode='42501'; end if;
+ perform pg_advisory_xact_lock(hashtext('competition:'||p_session_id));
+ delete from public.competition_session_locks where session_id=p_session_id and locked_at<now()-interval '5 minutes';
+ select * into v_lock from public.competition_session_locks where session_id=p_session_id for update;
+ if found then
+  if v_lock.locked_by=auth.uid() then
+   update public.competition_session_locks set locked_at=now(),locked_by_name=v_name where session_id=p_session_id;
+   return query select true,v_name; return;
+  end if;
+  return query select false,coalesce(v_lock.locked_by_name,'แอดมินท่านอื่น'); return;
+ end if;
+ insert into public.competition_session_locks(session_id,locked_by,locked_by_name) values(p_session_id,auth.uid(),v_name);
+ return query select true,v_name;
+end; $$;
+
+create or replace function public.verify_competition_session_lock(p_session_id text)
+returns table(has_lock boolean,locked_by_name text)
+language plpgsql security definer set search_path=public as $$
+declare v_lock public.competition_session_locks%rowtype;
+begin
+ if auth.uid() is null then raise exception 'Authentication required' using errcode='42501'; end if;
+ if not exists(select 1 from public.competition_sessions cs join public.classrooms c on c.id=cs.classroom_id where cs.id=p_session_id and public.can_edit_school(c.school_id)) then raise exception 'Not permitted to edit this competition' using errcode='42501'; end if;
+ select * into v_lock from public.competition_session_locks where session_id=p_session_id and locked_at>=now()-interval '5 minutes';
+ if found and v_lock.locked_by=auth.uid() then return query select true,null::text; return; end if;
+ return query select false,coalesce(v_lock.locked_by_name,'ไม่มีสิทธิ์ล็อกรายการแข่งขันนี้');
+end; $$;
+
+create or replace function public.keep_competition_session_lock_alive(p_session_id text)
+returns boolean language plpgsql security definer set search_path=public as $$
+begin
+ if auth.uid() is null then raise exception 'Authentication required' using errcode='42501'; end if;
+ update public.competition_session_locks set locked_at=now() where session_id=p_session_id and locked_by=auth.uid() and locked_at>=now()-interval '5 minutes';
+ return found;
+end; $$;
+
+create or replace function public.release_competition_session_lock(p_session_id text)
+returns void language plpgsql security definer set search_path=public as $$
+begin
+ if auth.uid() is null then return; end if;
+ delete from public.competition_session_locks where session_id=p_session_id and locked_by=auth.uid();
+end; $$;
+
+revoke all on function public.acquire_competition_session_lock(text,text) from public;
+revoke all on function public.verify_competition_session_lock(text) from public;
+revoke all on function public.keep_competition_session_lock_alive(text) from public;
+revoke all on function public.release_competition_session_lock(text) from public;
+grant execute on function public.acquire_competition_session_lock(text,text) to authenticated;
+grant execute on function public.verify_competition_session_lock(text) to authenticated;
+grant execute on function public.keep_competition_session_lock_alive(text) to authenticated;
+grant execute on function public.release_competition_session_lock(text) to authenticated;
+
+drop policy if exists "competition_session_write" on public.competition_sessions;
+create policy "competition_session_insert" on public.competition_sessions for insert with check (
+ public.can_edit_school((select c.school_id from public.classrooms c where c.id=public.competition_sessions.classroom_id))
+);
+create policy "competition_session_update" on public.competition_sessions for update using (
+ public.can_edit_school((select c.school_id from public.classrooms c where c.id=public.competition_sessions.classroom_id)) and exists(select 1 from public.competition_session_locks lock where lock.session_id=public.competition_sessions.id and lock.locked_by=auth.uid() and lock.locked_at>=now()-interval '5 minutes')
+) with check (
+ public.can_edit_school((select c.school_id from public.classrooms c where c.id=public.competition_sessions.classroom_id)) and exists(select 1 from public.competition_session_locks lock where lock.session_id=public.competition_sessions.id and lock.locked_by=auth.uid() and lock.locked_at>=now()-interval '5 minutes')
+);
+create policy "competition_session_delete" on public.competition_sessions for delete using (
+ public.can_edit_school((select c.school_id from public.classrooms c where c.id=public.competition_sessions.classroom_id)) and exists(select 1 from public.competition_session_locks lock where lock.session_id=public.competition_sessions.id and lock.locked_by=auth.uid() and lock.locked_at>=now()-interval '5 minutes')
+);
+
+drop policy if exists "competition_result_write" on public.competition_results;
+create policy "competition_results_insert" on public.competition_results for insert with check (
+ exists(select 1 from public.competition_sessions cs join public.classrooms c on c.id=cs.classroom_id join public.competition_session_locks lock on lock.session_id=cs.id where cs.id=public.competition_results.session_id and public.can_edit_school(c.school_id) and lock.locked_by=auth.uid() and lock.locked_at>=now()-interval '5 minutes')
+);
+create policy "competition_results_update" on public.competition_results for update using (
+ exists(select 1 from public.competition_sessions cs join public.classrooms c on c.id=cs.classroom_id join public.competition_session_locks lock on lock.session_id=cs.id where cs.id=public.competition_results.session_id and public.can_edit_school(c.school_id) and lock.locked_by=auth.uid() and lock.locked_at>=now()-interval '5 minutes')
+) with check (
+ exists(select 1 from public.competition_sessions cs join public.classrooms c on c.id=cs.classroom_id join public.competition_session_locks lock on lock.session_id=cs.id where cs.id=public.competition_results.session_id and public.can_edit_school(c.school_id) and lock.locked_by=auth.uid() and lock.locked_at>=now()-interval '5 minutes')
+);
+create policy "competition_results_delete" on public.competition_results for delete using (
+ exists(select 1 from public.competition_sessions cs join public.classrooms c on c.id=cs.classroom_id join public.competition_session_locks lock on lock.session_id=cs.id where cs.id=public.competition_results.session_id and public.can_edit_school(c.school_id) and lock.locked_by=auth.uid() and lock.locked_at>=now()-interval '5 minutes')
+);
 
 -- Classroom Locks for Concurrency Control
 create table if not exists public.classroom_locks (

@@ -237,6 +237,237 @@ export async function saveResultRows(sessionId,entries,userId,studentIds){
  if(rows.length)must(await supabase.from('test_results').upsert(rows,{onConflict:'session_id,student_id'}));
 }
 
+export async function loadCompetitionClassroom(classroomId) {
+ const sessions=await fetchAll(()=>supabase.from('competition_sessions').select('*').eq('classroom_id',String(classroomId)).eq('is_deleted',false).order('created_at'));
+ const sessionIds=sessions.map(session=>session.id);
+ const results=sessionIds.length?await fetchAll(()=>supabase.from('competition_results').select('*').in('session_id',sessionIds)):[];
+ return sessions.map(session=>({
+  id:session.id,
+  classId:session.classroom_id,
+  name:session.competition_name,
+  date:session.competition_date||'',
+  robot:session.robot_type||'',
+  exam:session.exam_set||'',
+  createdAt:session.created_at,
+  entries:Object.fromEntries(results.filter(result=>result.session_id===session.id).map(result=>[result.student_id,{
+   score:result.score==null?'':String(result.score),
+   time:result.time_value||'',
+   absent:Boolean(result.absent),
+   is_special:Boolean(result.is_special),
+   updatedBy:result.updated_by||''
+  }]))
+ }));
+}
+
+export async function saveCompetitionSession(session,userId) {
+ const row={
+  id:String(session.id),
+  classroom_id:String(session.classId),
+  competition_name:String(session.name||'การแข่งขันภายใน').trim(),
+  competition_date:session.date||null,
+  robot_type:session.robot||null,
+  exam_set:session.exam||null,
+  created_by:userId,
+  updated_at:new Date().toISOString()
+ };
+ must(await supabase.from('competition_sessions').upsert(row));
+}
+
+export async function saveCompetitionResults(sessionId,entries,userId) {
+ const now=new Date().toISOString();
+ const rows=Object.entries(entries||{}).map(([studentId,result])=>({
+  session_id:String(sessionId),
+  student_id:String(studentId),
+  score:result.score===''||result.score==null?null:Number(result.score),
+  time_value:result.time||'',
+  absent:Boolean(result.absent),
+  is_special:Boolean(result.is_special),
+  updated_by:userId,
+  updated_at:now
+ }));
+ if(rows.length)must(await supabase.from('competition_results').upsert(rows,{onConflict:'session_id,student_id'}));
+}
+
+export async function deleteCompetitionSession(sessionId) {
+ await softDeleteById('competition_sessions',sessionId);
+}
+
+const resultHasValue=row=>row&&(row.score!==null&&row.score!==''||Boolean(row.absent)||Boolean(row.is_special)||Boolean(String(row.time_value||'').trim()));
+const testRoundNumber=value=>Number(String(value||'').match(/\d+/)?.[0]||0);
+const assessmentMetadata=(row,type='competition')=>type==='competition'
+ ?{date:row?.competition_date||'',robot:row?.robot_type||'',exam:row?.exam_set||''}
+ :{date:row?.test_date||'',robot:row?.robot_type||'',exam:row?.exam_set||''};
+const missingAssessmentMetadata=metadata=>['date','robot','exam'].filter(key=>!String(metadata?.[key]||'').trim());
+const differentAssessmentMetadata=(source,destination)=>['date','robot','exam'].filter(key=>String(source?.[key]||'').trim()!==String(destination?.[key]||'').trim());
+
+// Build a read-only school-wide plan before copying competition scores. Matching
+// uses the competition name across rooms and the selected date only to resolve
+// duplicate names. Student rows are matched by their stable id, never by name.
+export async function previewCompetitionToTestRound(schoolId,sourceSessionId,targetRound=2) {
+ const source=must(await supabase.from('competition_sessions').select('*').eq('id',String(sourceSessionId)).eq('is_deleted',false).single());
+ const classrooms=await fetchAll(()=>supabase.from('classrooms').select('id,name').eq('school_id',String(schoolId)).eq('is_deleted',false).order('name'));
+ const classroomIds=classrooms.map(room=>room.id);
+ if(!classroomIds.includes(source.classroom_id))throw new Error('รายการแข่งขันไม่ได้อยู่ในโรงเรียนที่เลือก');
+ if(!classroomIds.length)return {source:{},targetRound,rooms:[],totals:{rooms:0,readyRooms:0,transferable:0,protected:0,missingRooms:0,conflictRooms:0}};
+ const [students,competitionSessions,testSessions]=await Promise.all([
+  fetchAll(()=>supabase.from('students').select('id,classroom_id').in('classroom_id',classroomIds)),
+  fetchAll(()=>supabase.from('competition_sessions').select('*').in('classroom_id',classroomIds).eq('is_deleted',false).order('created_at')),
+  fetchAll(()=>supabase.from('test_sessions').select('*').in('classroom_id',classroomIds).eq('is_deleted',false).order('created_at'))
+ ]);
+ const namedCompetitionSessions=competitionSessions.filter(item=>String(item.competition_name||'').trim()===String(source.competition_name||'').trim());
+ const competitionIds=namedCompetitionSessions.map(item=>item.id);
+ const targetSessions=testSessions.filter(item=>testRoundNumber(item.test_name)===Number(targetRound));
+ const targetIds=targetSessions.map(item=>item.id);
+ const [competitionResults,testResults]=await Promise.all([
+  competitionIds.length?fetchAll(()=>supabase.from('competition_results').select('*').in('session_id',competitionIds)):[],
+  targetIds.length?fetchAll(()=>supabase.from('test_results').select('*').in('session_id',targetIds)):[]
+ ]);
+ const rooms=classrooms.sort((a,b)=>compareClassNames(a.name,b.name)).map(room=>{
+  const sameName=namedCompetitionSessions.filter(item=>item.classroom_id===room.id);
+  const sameDate=sameName.filter(item=>String(item.competition_date||'')===String(source.competition_date||''));
+  const sourceCandidates=room.id===source.classroom_id?[source]:(sameName.length<=1?sameName:(sameDate.length===1?sameDate:sameName));
+  const destinations=targetSessions.filter(item=>item.classroom_id===room.id);
+  const sourceSession=sourceCandidates.length===1?sourceCandidates[0]:null;
+  const destinationSession=destinations.length===1?destinations[0]:null;
+  const sourceMetadata=assessmentMetadata(sourceSession,'competition');
+  const destinationMetadata=assessmentMetadata(destinationSession,'test');
+  const sourceMissingFields=sourceSession?missingAssessmentMetadata(sourceMetadata):[];
+  const destinationMissingFields=destinationSession?missingAssessmentMetadata(destinationMetadata):[];
+  const metadataMismatchFields=sourceSession&&destinationSession&&!sourceMissingFields.length&&!destinationMissingFields.length?differentAssessmentMetadata(sourceMetadata,destinationMetadata):[];
+  const studentIds=new Set(students.filter(item=>item.classroom_id===room.id).map(item=>item.id));
+  const sourceRows=sourceSession?competitionResults.filter(item=>item.session_id===sourceSession.id&&studentIds.has(item.student_id)&&resultHasValue(item)):[];
+  const protectedIds=new Set(destinationSession?testResults.filter(item=>item.session_id===destinationSession.id&&resultHasValue(item)).map(item=>item.student_id):[]);
+  const transferableRows=sourceRows.filter(item=>!protectedIds.has(item.student_id));
+  let status='ready';
+  if(!sameName.length)status='source_missing';
+  else if(sourceCandidates.length!==1)status='source_duplicate';
+  else if(sourceMissingFields.length)status='source_metadata_missing';
+  else if(destinations.length>1)status='destination_duplicate';
+  else if(destinationMissingFields.length)status='destination_metadata_missing';
+  else if(metadataMismatchFields.length)status='metadata_mismatch';
+  else if(!sourceRows.length)status='source_empty';
+  else if(!transferableRows.length)status='protected';
+  else if(!destinationSession)status='create';
+  const canTransfer=['ready','create'].includes(status);
+  return {
+   classroomId:room.id,classroomName:room.name,status,
+   sourceSessionId:sourceSession?.id||'',sourceResultCount:sourceRows.length,
+   destinationSessionId:destinationSession?.id||'',destinationCount:destinations.length,
+   sourceMetadata,destinationMetadata,sourceMissingFields,destinationMissingFields,metadataMismatchFields,
+   protectedCount:sourceRows.length-transferableRows.length,transferableCount:canTransfer?transferableRows.length:0
+  };
+ });
+ const ready=rooms.filter(room=>['ready','create'].includes(room.status));
+ return {
+  source:{id:source.id,name:source.competition_name,date:source.competition_date||'',robot:source.robot_type||'',exam:source.exam_set||''},
+  targetRound:Number(targetRound),rooms,
+  totals:{
+   rooms:rooms.length,readyRooms:ready.length,
+   transferable:rooms.reduce((sum,room)=>sum+room.transferableCount,0),
+   protected:rooms.reduce((sum,room)=>sum+room.protectedCount,0),
+   missingRooms:rooms.filter(room=>room.status==='source_missing').length,
+   conflictRooms:rooms.filter(room=>['source_duplicate','destination_duplicate','source_metadata_missing','destination_metadata_missing','metadata_mismatch'].includes(room.status)).length
+  }
+ };
+}
+
+export async function transferCompetitionToTestRound({schoolId,sourceSessionId,targetRound=2,userId,userName}) {
+ if(!userId)throw new Error('ไม่พบผู้ใช้งานที่บันทึกคะแนน');
+ const plan=await previewCompetitionToTestRound(schoolId,sourceSessionId,targetRound);
+ const summary={transferred:0,createdSessions:0,protected:plan.totals.protected,completedRooms:0,skippedRooms:0,lockedRooms:0,errors:[]};
+ for(const room of plan.rooms){
+  if(!['ready','create'].includes(room.status)||!room.transferableCount){summary.skippedRooms+=1;continue;}
+  const lock=await acquireLock(room.classroomId,userId,userName);
+  if(!lock.success){summary.lockedRooms+=1;summary.skippedRooms+=1;summary.errors.push(`${room.classroomName}: กำลังแก้ไขโดย ${lock.lockedBy}`);continue;}
+  try{
+   // Re-read the destination while holding the classroom lock so repeated
+   // transfers remain idempotent and never create a duplicate test round.
+   const currentSessions=await fetchAll(()=>supabase.from('test_sessions').select('*').eq('classroom_id',String(room.classroomId)).eq('is_deleted',false).order('created_at'));
+   const destinations=currentSessions.filter(item=>testRoundNumber(item.test_name)===Number(targetRound));
+   if(destinations.length>1)throw new Error(`พบครั้งที่ ${targetRound} ซ้ำ กรุณาแก้รายการซ้ำก่อน`);
+   const sourceSession=must(await supabase.from('competition_sessions').select('*').eq('id',String(room.sourceSessionId)).eq('is_deleted',false).single());
+   const sourceMetadata=assessmentMetadata(sourceSession,'competition');
+   const missingSource=missingAssessmentMetadata(sourceMetadata);
+   if(missingSource.length)throw new Error('ข้อมูลการแข่งขันไม่ครบ กรุณาตั้งวันที่ ประเภทหุ่นยนต์ และชุดทดสอบก่อน');
+   let destination=destinations[0];
+   if(!destination){
+    const id=`session-transfer-${Date.now()}-${Math.random().toString(36).slice(2,10)}`;
+    destination={id,classId:room.classroomId,test:`ครั้งที่ ${targetRound}`,date:sourceMetadata.date,endDate:'',robot:sourceMetadata.robot,exam:sourceMetadata.exam,teachingPeriod:'',trainer:'',term:'',year:'',feedback:{detail:'',summary:''}};
+    await saveSessionRows([destination]);
+    summary.createdSessions+=1;
+   }else{
+    const destinationMetadata=assessmentMetadata(destination,'test');
+    if(missingAssessmentMetadata(destinationMetadata).length)throw new Error(`ข้อมูลครั้งที่ ${targetRound} ไม่ครบ กรุณาตั้งค่าก่อน`);
+    if(differentAssessmentMetadata(sourceMetadata,destinationMetadata).length)throw new Error(`ข้อมูลการแข่งขันไม่ตรงกับครั้งที่ ${targetRound} กรุณาตรวจสอบก่อน`);
+   }
+   const [sourceRows,existingRows,roomStudents]=await Promise.all([
+    fetchAll(()=>supabase.from('competition_results').select('*').eq('session_id',String(room.sourceSessionId))),
+    fetchAll(()=>supabase.from('test_results').select('*').eq('session_id',String(destination.id))),
+    fetchAll(()=>supabase.from('students').select('id').eq('classroom_id',String(room.classroomId)))
+   ]);
+   const studentIds=new Set(roomStudents.map(item=>item.id));
+   const protectedIds=new Set(existingRows.filter(resultHasValue).map(item=>item.student_id));
+   const entries=Object.fromEntries(sourceRows.filter(item=>studentIds.has(item.student_id)&&resultHasValue(item)&&!protectedIds.has(item.student_id)).map(item=>[item.student_id,{
+    score:item.score==null?'':String(item.score),time:item.time_value||'',absent:Boolean(item.absent),is_special:Boolean(item.is_special)
+   }]));
+   const transferIds=Object.keys(entries);
+   if(transferIds.length){
+    await saveResultRows(destination.id,entries,userId,transferIds);
+    summary.transferred+=transferIds.length;
+    summary.completedRooms+=1;
+   }else summary.skippedRooms+=1;
+  }catch(error){
+   summary.skippedRooms+=1;
+   summary.errors.push(`${room.classroomName}: ${error.message}`);
+  }finally{await releaseLock(room.classroomId,userId)}
+ }
+ return {...summary,plan};
+}
+
+// Competition locks are scoped to one competition session. Different rooms,
+// and even different competitions in the same room, can therefore be edited
+// at the same time without blocking each other.
+export async function acquireCompetitionLock(sessionId,userId,userName) {
+ if(!sessionId||!userId)return {success:false,lockedBy:'ไม่สามารถยืนยันผู้ใช้งานได้'};
+ try{
+  const {data,error}=await supabase.rpc('acquire_competition_session_lock',{p_session_id:String(sessionId),p_locked_by_name:userName||null});
+  if(error)throw error;
+  const lock=Array.isArray(data)?data[0]:data;
+  if(!lock)throw new Error('ไม่ได้รับสถานะการล็อกจากระบบ');
+  return {success:Boolean(lock.success),lockedBy:lock.locked_by_name||'แอดมินท่านอื่น'};
+ }catch(error){
+  console.warn('Acquire competition lock failed:',error);
+  return {success:false,lockedBy:'ระบบไม่สามารถยืนยันสิทธิ์การแก้ไขได้'};
+ }
+}
+
+export async function verifyCompetitionLock(sessionId,userId) {
+ if(!sessionId||!userId)return {hasLock:null,lockedBy:'ไม่สามารถยืนยันผู้ใช้งานได้'};
+ try{
+  const {data,error}=await supabase.rpc('verify_competition_session_lock',{p_session_id:String(sessionId)});
+  if(error)throw error;
+  const lock=Array.isArray(data)?data[0]:data;
+  if(!lock)throw new Error('ไม่ได้รับสถานะการล็อกจากระบบ');
+  return {hasLock:Boolean(lock.has_lock),lockedBy:lock.locked_by_name||'ไม่มีสิทธิ์ล็อกรายการแข่งขันนี้'};
+ }catch(error){
+  console.warn('Verify competition lock failed:',error);
+  return {hasLock:null,lockedBy:'ระบบไม่สามารถยืนยันสิทธิ์การแก้ไขได้'};
+ }
+}
+
+export async function keepCompetitionLockAlive(sessionId,userId) {
+ if(!sessionId||!userId)return false;
+ const {data,error}=await supabase.rpc('keep_competition_session_lock_alive',{p_session_id:String(sessionId)});
+ if(error)throw error;
+ return Boolean(data);
+}
+
+export async function releaseCompetitionLock(sessionId,userId) {
+ if(!sessionId||!userId)return;
+ const {error}=await supabase.rpc('release_competition_session_lock',{p_session_id:String(sessionId)});
+ if(error)console.warn('Release competition lock failed:',error);
+}
+
 export async function saveSchoolBundle(school,userId){
  await saveSchools([school],userId);
  const classroomRows=(school.classrooms||[]).map(c=>({
